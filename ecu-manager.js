@@ -2,44 +2,31 @@ class ECUManager {
     constructor() {
         this.config = null;
         this.currentValues = {};
-        this.isOnline = false;
         this.currentNodeId = null;
+        this.currentBreadcrumb = '';
     }
 
     async init() {
         await this.loadConfig();
         this.setupEventListeners();
         this.renderTree();
+        window.ecuCommunication.setConfig(this.config);
+        window.ecuCommunication.setStatus(false);
+        this.currentValues = window.ecuCommunication.getAllDefaultValues();
     }
 
     async loadConfig() {
         try {
             const response = await fetch('su.json');
             this.config = await response.json();
-            this.initializeDefaultValues();
         } catch (error) {
             console.error('Erro ao carregar configuração:', error);
         }
     }
 
-    initializeDefaultValues() {
-        const processNode = (node) => {
-            if (node.widgets) {
-                node.widgets.forEach(widget => {
-                    this.currentValues[widget.command] = widget.default;
-                });
-            }
-            if (node.children) {
-                node.children.forEach(child => processNode(child));
-            }
-        };
-
-        this.config.tree.forEach(node => processNode(node));
-    }
-
     setupEventListeners() {
-        document.getElementById('saveBtn').addEventListener('click', () => this.saveAll());
-        document.getElementById('reloadBtn').addEventListener('click', () => this.reloadAll());
+        document.getElementById('saveBtn').addEventListener('click', () => this.saveCurrentScreen());
+        document.getElementById('reloadBtn').addEventListener('click', () => this.reloadCurrentScreen());
         document.getElementById('searchInput').addEventListener('input', (e) => this.searchTree(e.target.value));
     }
 
@@ -47,7 +34,7 @@ class ECUManager {
         const treeView = document.getElementById('treeView');
         treeView.innerHTML = '';
 
-        const renderNode = (node, level = 0) => {
+        const renderNode = (node, level = 0, parentPath = '') => {
             const nodeDiv = document.createElement('div');
             nodeDiv.className = 'tree-node';
             nodeDiv.dataset.nodeId = node.id;
@@ -78,14 +65,16 @@ class ECUManager {
             label.textContent = node.label;
             itemDiv.appendChild(label);
 
+            const currentPath = parentPath ? `${parentPath} / ${node.label}` : node.label;
+
             itemDiv.addEventListener('click', (e) => {
                 e.stopPropagation();
                 if (hasChildren) {
                     this.toggleNode(nodeDiv, itemDiv);
                 }
                 if (hasWidgets) {
-                    this.selectNode(node.id, itemDiv);
-                    this.renderWidgets(node.widgets);
+                    this.selectNode(node.id, itemDiv, currentPath);
+                    this.renderWidgets(node.widgets, currentPath);
                 }
             });
 
@@ -95,7 +84,7 @@ class ECUManager {
                 const childrenDiv = document.createElement('div');
                 childrenDiv.className = 'tree-children';
                 node.children.forEach(child => {
-                    childrenDiv.appendChild(renderNode(child, level + 1));
+                    childrenDiv.appendChild(renderNode(child, level + 1, currentPath));
                 });
                 nodeDiv.appendChild(childrenDiv);
             }
@@ -116,262 +105,60 @@ class ECUManager {
         }
     }
 
-    selectNode(nodeId, itemDiv) {
+    selectNode(nodeId, itemDiv, breadcrumb) {
         document.querySelectorAll('.tree-item').forEach(item => {
             item.classList.remove('active');
         });
         itemDiv.classList.add('active');
         this.currentNodeId = nodeId;
+        this.currentBreadcrumb = breadcrumb;
     }
 
-    renderWidgets(widgets) {
+    renderWidgets(widgets, breadcrumbPath) {
         const widgetsArea = document.getElementById('widgetsArea');
-        widgetsArea.innerHTML = '';
-
-        widgets.forEach(widget => {
-            const container = document.createElement('div');
-            container.className = 'widget-container';
-
-            const title = document.createElement('div');
-            title.className = 'widget-title';
-            title.textContent = widget.title;
-            container.appendChild(title);
-
-            if (widget.help) {
-                const help = document.createElement('div');
-                help.className = 'widget-help';
-                help.textContent = widget.help;
-                container.appendChild(help);
-            }
-
-            const widgetContent = this.createWidget(widget);
-            container.appendChild(widgetContent);
-
-            widgetsArea.appendChild(container);
-        });
+        window.widgetManager.renderWidgets(
+            widgets,
+            widgetsArea,
+            this.currentValues,
+            (command, value) => this.onValueChange(command, value),
+            breadcrumbPath
+        );
     }
 
-    createWidget(widget) {
-        const div = document.createElement('div');
-        div.className = `widget-${widget.type}`;
-
-        switch (widget.type) {
-            case 'slider':
-                return this.createSlider(widget);
-            case 'spinbox':
-                return this.createSpinbox(widget);
-            case 'combobox':
-                return this.createCombobox(widget);
-            case 'toggle':
-                return this.createToggle(widget);
-            case 'button':
-                return this.createButton(widget);
-            default:
-                div.textContent = 'Widget não suportado';
-                return div;
-        }
+    onValueChange(command, value) {
+        this.currentValues[command] = value;
+        console.log(`[VALOR ALTERADO] ${command} = ${value}`);
     }
 
-    createSlider(widget) {
-        const container = document.createElement('div');
-        container.className = 'widget-slider';
+    async saveCurrentScreen() {
+        const currentWidgets = window.widgetManager.getCurrentWidgets();
 
-        const slider = document.createElement('input');
-        slider.type = 'range';
-        slider.min = widget.min;
-        slider.max = widget.max;
-        slider.value = this.currentValues[widget.command];
-        slider.className = 'form-range';
-
-        const valueDisplay = document.createElement('div');
-        valueDisplay.className = 'slider-value';
-        valueDisplay.innerHTML = `
-            <span>${widget.min}${widget.unit || ''}</span>
-            <span class="current-value">${this.currentValues[widget.command]}${widget.unit || ''}</span>
-            <span>${widget.max}${widget.unit || ''}</span>
-        `;
-
-        slider.addEventListener('input', (e) => {
-            this.currentValues[widget.command] = parseFloat(e.target.value);
-            valueDisplay.querySelector('.current-value').textContent =
-                `${this.currentValues[widget.command]}${widget.unit || ''}`;
-        });
-
-        container.appendChild(slider);
-        container.appendChild(valueDisplay);
-        return container;
-    }
-
-    createSpinbox(widget) {
-        const container = document.createElement('div');
-        container.className = 'widget-spinbox';
-
-        const input = document.createElement('input');
-        input.type = 'number';
-        input.min = widget.min;
-        input.max = widget.max;
-        input.step = widget.step || 1;
-        input.value = this.currentValues[widget.command];
-        input.className = 'form-control';
-
-        const unit = document.createElement('span');
-        unit.textContent = ` ${widget.unit || ''}`;
-        unit.style.marginLeft = '10px';
-        unit.style.color = '#999';
-
-        input.addEventListener('change', (e) => {
-            let value = parseFloat(e.target.value);
-            if (value < widget.min) value = widget.min;
-            if (value > widget.max) value = widget.max;
-            e.target.value = value;
-            this.currentValues[widget.command] = value;
-        });
-
-        container.appendChild(input);
-        container.appendChild(unit);
-        return container;
-    }
-
-    createCombobox(widget) {
-        const container = document.createElement('div');
-        container.className = 'widget-combobox';
-
-        const select = document.createElement('select');
-        select.className = 'form-select';
-
-        widget.options.forEach(option => {
-            const optionElement = document.createElement('option');
-            optionElement.value = option.value;
-            optionElement.textContent = option.label;
-            if (option.value === this.currentValues[widget.command]) {
-                optionElement.selected = true;
-            }
-            select.appendChild(optionElement);
-        });
-
-        select.addEventListener('change', (e) => {
-            this.currentValues[widget.command] = e.target.value;
-        });
-
-        container.appendChild(select);
-        return container;
-    }
-
-    createToggle(widget) {
-        const container = document.createElement('div');
-        container.className = 'widget-toggle';
-
-        const toggleSwitch = document.createElement('label');
-        toggleSwitch.className = 'toggle-switch';
-
-        const input = document.createElement('input');
-        input.type = 'checkbox';
-        input.checked = this.currentValues[widget.command];
-
-        const slider = document.createElement('span');
-        slider.className = 'toggle-slider';
-
-        input.addEventListener('change', (e) => {
-            this.currentValues[widget.command] = e.target.checked;
-        });
-
-        toggleSwitch.appendChild(input);
-        toggleSwitch.appendChild(slider);
-
-        const label = document.createElement('span');
-        label.textContent = widget.title;
-
-        container.appendChild(toggleSwitch);
-        container.appendChild(label);
-        return container;
-    }
-
-    createButton(widget) {
-        const container = document.createElement('div');
-        container.className = 'widget-button';
-
-        const button = document.createElement('button');
-        button.textContent = widget.title;
-        button.addEventListener('click', () => {
-            console.log(`Botão ${widget.command} clicado`);
-            this.sendCommand(widget.command, 'trigger');
-        });
-
-        container.appendChild(button);
-        return container;
-    }
-
-    async saveAll() {
-        console.log('=== SALVANDO CONFIGURAÇÕES NA ECU ===');
-
-        for (const [command, value] of Object.entries(this.currentValues)) {
-            const commandStr = `${command}=${value}`;
-            console.log(`Enviando: ${commandStr}`);
-            await this.sendCommand(command, value);
+        if (currentWidgets.length === 0) {
+            window.ecuCommunication.showNotification('Nenhum widget para salvar', 'warning');
+            return;
         }
 
-        console.log('=== SALVAMENTO CONCLUÍDO ===');
-        this.showNotification('Configurações salvas!', 'success');
+        await window.ecuCommunication.saveCurrentScreen(currentWidgets, this.currentValues);
     }
 
-    async reloadAll() {
-        console.log('=== RECARREGANDO CONFIGURAÇÕES DA ECU ===');
+    async reloadCurrentScreen() {
+        const currentWidgets = window.widgetManager.getCurrentWidgets();
 
-        for (const command of Object.keys(this.currentValues)) {
-            const commandStr = `${command}?`;
-            console.log(`Consultando: ${commandStr}`);
-            const value = await this.queryCommand(command);
-            this.currentValues[command] = value;
+        if (currentWidgets.length === 0) {
+            window.ecuCommunication.showNotification('Nenhum widget para recarregar', 'warning');
+            return;
         }
 
-        console.log('=== VALORES RECARREGADOS ===');
-        console.log(this.currentValues);
+        const reloadedValues = await window.ecuCommunication.reloadCurrentScreen(currentWidgets);
+
+        Object.assign(this.currentValues, reloadedValues);
 
         if (this.currentNodeId) {
             const node = this.findNodeById(this.currentNodeId);
             if (node && node.widgets) {
-                this.renderWidgets(node.widgets);
+                this.renderWidgets(node.widgets, this.currentBreadcrumb);
             }
         }
-
-        this.showNotification('Configurações recarregadas!', 'info');
-    }
-
-    async sendCommand(command, value) {
-        return new Promise((resolve) => {
-            setTimeout(() => {
-                console.log(`ECU responde: OK`);
-                resolve(true);
-            }, 50);
-        });
-    }
-
-    async queryCommand(command) {
-        return new Promise((resolve) => {
-            setTimeout(() => {
-                const defaultValue = this.getDefaultValue(command);
-                console.log(`ECU responde: ${command}=${defaultValue}`);
-                resolve(defaultValue);
-            }, 50);
-        });
-    }
-
-    getDefaultValue(command) {
-        const findDefault = (nodes) => {
-            for (const node of nodes) {
-                if (node.widgets) {
-                    const widget = node.widgets.find(w => w.command === command);
-                    if (widget) return widget.default;
-                }
-                if (node.children) {
-                    const result = findDefault(node.children);
-                    if (result !== undefined) return result;
-                }
-            }
-            return undefined;
-        };
-
-        return findDefault(this.config.tree);
     }
 
     findNodeById(nodeId) {
@@ -413,22 +200,6 @@ class ECUManager {
                 item.classList.add('expanded');
             });
         }
-    }
-
-    updateStatus(online) {
-        this.isOnline = online;
-        const statusBadge = document.getElementById('statusBadge');
-        if (online) {
-            statusBadge.className = 'badge bg-success';
-            statusBadge.textContent = 'ONLINE';
-        } else {
-            statusBadge.className = 'badge bg-danger';
-            statusBadge.textContent = 'OFFLINE';
-        }
-    }
-
-    showNotification(message, type) {
-        console.log(`[${type.toUpperCase()}] ${message}`);
     }
 }
 
