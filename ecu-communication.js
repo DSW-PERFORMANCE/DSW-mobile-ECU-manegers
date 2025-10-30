@@ -1,6 +1,6 @@
 class ECUCommunication {
     constructor() {
-        this.isOnline = true;
+        this.isOnline = false;
         this.config = null;
     }
 
@@ -151,6 +151,9 @@ class ECUCommunication {
 
     showNotification(message, type) {
         console.log(`[${type.toUpperCase()}] ${message}`);
+        if (window.notificationManager) {
+            window.notificationManager[type](message);
+        }
     }
 }
 

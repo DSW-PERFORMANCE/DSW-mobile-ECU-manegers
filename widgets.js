@@ -43,6 +43,8 @@ class WidgetManager {
                 return this.createRadio(widget, currentValue, onValueChange);
             case 'button':
                 return this.createButton(widget, onValueChange);
+            case 'chart2d':
+                return this.createChart2D(widget, currentValue, onValueChange);
             default:
                 const div = document.createElement('div');
                 div.textContent = 'Widget não suportado';
@@ -54,6 +56,9 @@ class WidgetManager {
         const container = document.createElement('div');
         container.className = 'widget-slider';
 
+        const sliderTrack = document.createElement('div');
+        sliderTrack.className = 'slider-track';
+
         const slider = document.createElement('input');
         slider.type = 'range';
         slider.min = widget.min;
@@ -61,23 +66,39 @@ class WidgetManager {
         slider.value = currentValue;
         slider.className = 'form-range custom-slider';
 
+        const percentage = ((currentValue - widget.min) / (widget.max - widget.min)) * 100;
+
         const valueDisplay = document.createElement('div');
-        valueDisplay.className = 'slider-value';
+        valueDisplay.className = 'slider-value-display';
         valueDisplay.innerHTML = `
-            <span>${widget.min}${widget.unit || ''}</span>
-            <span class="current-value">${currentValue}${widget.unit || ''}</span>
-            <span>${widget.max}${widget.unit || ''}</span>
+            <div class="value-badge">${currentValue}${widget.unit || ''}</div>
         `;
 
         slider.addEventListener('input', (e) => {
             const validValue = this.clamp(parseFloat(e.target.value), widget.min, widget.max);
             e.target.value = validValue;
-            valueDisplay.querySelector('.current-value').textContent = `${validValue}${widget.unit || ''}`;
+
+            const newPercentage = ((validValue - widget.min) / (widget.max - widget.min)) * 100;
+            valueDisplay.style.left = `calc(${newPercentage}% - 30px)`;
+            valueDisplay.querySelector('.value-badge').textContent = `${validValue}${widget.unit || ''}`;
+
             onValueChange(widget.command, validValue);
         });
 
-        container.appendChild(slider);
-        container.appendChild(valueDisplay);
+        valueDisplay.style.left = `calc(${percentage}% - 30px)`;
+
+        const rangeLabels = document.createElement('div');
+        rangeLabels.className = 'slider-labels';
+        rangeLabels.innerHTML = `
+            <span class="label-min">${widget.min}</span>
+            <span class="label-max">${widget.max}</span>
+        `;
+
+        sliderTrack.appendChild(slider);
+        sliderTrack.appendChild(valueDisplay);
+
+        container.appendChild(sliderTrack);
+        container.appendChild(rangeLabels);
         return container;
     }
 
@@ -292,6 +313,208 @@ class WidgetManager {
 
             widgetsArea.appendChild(container);
         });
+    }
+
+    createChart2D(widget, currentValue, onValueChange) {
+        const container = document.createElement('div');
+        container.className = 'widget-chart2d';
+
+        const chartContainer = document.createElement('div');
+        chartContainer.className = 'chart2d-container';
+
+        const canvas = document.createElement('canvas');
+        canvas.className = 'chart2d-canvas';
+        canvas.width = widget.width || 400;
+        canvas.height = widget.height || 300;
+
+        const ctx = canvas.getContext('2d');
+
+        const xMin = widget.xMin || 0;
+        const xMax = widget.xMax || 100;
+        const yMin = widget.yMin || 0;
+        const yMax = widget.yMax || 100;
+        const xLabel = widget.xLabel || 'X';
+        const yLabel = widget.yLabel || 'Y';
+        const gridSize = widget.gridSize || 10;
+
+        let points = [];
+        if (currentValue && typeof currentValue === 'string') {
+            const values = currentValue.split(',').map(v => parseFloat(v.trim()));
+
+            if (widget.mode === 'xy') {
+                for (let i = 0; i < values.length; i += 2) {
+                    if (i + 1 < values.length) {
+                        points.push({ x: values[i], y: values[i + 1] });
+                    }
+                }
+            } else {
+                points = values.map((y, idx) => ({ x: idx, y: y }));
+            }
+        }
+
+        let draggingPoint = null;
+        let isDragging = false;
+
+        const drawChart = () => {
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const padding = 60;
+            const chartWidth = canvas.width - padding * 2;
+            const chartHeight = canvas.height - padding * 2;
+
+            ctx.strokeStyle = '#3a3a3a';
+            ctx.lineWidth = 0.5;
+
+            for (let i = 0; i <= gridSize; i++) {
+                const x = padding + (chartWidth / gridSize) * i;
+                const y = padding + (chartHeight / gridSize) * i;
+
+                ctx.beginPath();
+                ctx.moveTo(x, padding);
+                ctx.lineTo(x, canvas.height - padding);
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(padding, y);
+                ctx.lineTo(canvas.width - padding, y);
+                ctx.stroke();
+            }
+
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(padding, canvas.height - padding);
+            ctx.lineTo(canvas.width - padding, canvas.height - padding);
+            ctx.lineTo(padding, padding);
+            ctx.stroke();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '14px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(xLabel, canvas.width / 2, canvas.height - 10);
+
+            ctx.save();
+            ctx.translate(15, canvas.height / 2);
+            ctx.rotate(-Math.PI / 2);
+            ctx.fillText(yLabel, 0, 0);
+            ctx.restore();
+
+            ctx.font = '12px Arial';
+            ctx.fillStyle = '#999999';
+
+            for (let i = 0; i <= gridSize; i++) {
+                const x = padding + (chartWidth / gridSize) * i;
+                const xValue = xMin + (xMax - xMin) * (i / gridSize);
+                ctx.textAlign = 'center';
+                ctx.fillText(xValue.toFixed(0), x, canvas.height - padding + 20);
+
+                const y = canvas.height - padding - (chartHeight / gridSize) * i;
+                const yValue = yMin + (yMax - yMin) * (i / gridSize);
+                ctx.textAlign = 'right';
+                ctx.fillText(yValue.toFixed(0), padding - 10, y + 4);
+            }
+
+            if (points.length > 0) {
+                ctx.strokeStyle = '#a52a2a';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+
+                points.forEach((point, idx) => {
+                    const px = padding + ((point.x - xMin) / (xMax - xMin)) * chartWidth;
+                    const py = canvas.height - padding - ((point.y - yMin) / (yMax - yMin)) * chartHeight;
+
+                    if (idx === 0) {
+                        ctx.moveTo(px, py);
+                    } else {
+                        ctx.lineTo(px, py);
+                    }
+                });
+
+                ctx.stroke();
+
+                ctx.fillStyle = '#8B0000';
+                ctx.strokeStyle = '#a52a2a';
+                ctx.lineWidth = 2;
+
+                points.forEach(point => {
+                    const px = padding + ((point.x - xMin) / (xMax - xMin)) * chartWidth;
+                    const py = canvas.height - padding - ((point.y - yMin) / (yMax - yMin)) * chartHeight;
+
+                    ctx.beginPath();
+                    ctx.arc(px, py, 6, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
+                });
+            }
+        };
+
+        const updateValue = () => {
+            if (widget.mode === 'xy') {
+                const formattedValue = points.map(p => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(',');
+                onValueChange(widget.commandX, formattedValue);
+                if (widget.commandY) {
+                    onValueChange(widget.commandY, formattedValue);
+                }
+            } else {
+                const formattedValue = points.map(p => p.y.toFixed(2)).join(',');
+                onValueChange(widget.command, formattedValue);
+            }
+        };
+
+        canvas.addEventListener('mousedown', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            const padding = 60;
+            const chartWidth = canvas.width - padding * 2;
+            const chartHeight = canvas.height - padding * 2;
+
+            points.forEach((point, idx) => {
+                const px = padding + ((point.x - xMin) / (xMax - xMin)) * chartWidth;
+                const py = canvas.height - padding - ((point.y - yMin) / (yMax - yMin)) * chartHeight;
+
+                const dist = Math.sqrt((mouseX - px) ** 2 + (mouseY - py) ** 2);
+                if (dist < 10) {
+                    draggingPoint = idx;
+                    isDragging = true;
+                }
+            });
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging || draggingPoint === null) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            const padding = 60;
+            const chartWidth = canvas.width - padding * 2;
+            const chartHeight = canvas.height - padding * 2;
+
+            const newX = xMin + ((mouseX - padding) / chartWidth) * (xMax - xMin);
+            const newY = yMin + ((canvas.height - padding - mouseY) / chartHeight) * (yMax - yMin);
+
+            points[draggingPoint].x = this.clamp(newX, xMin, xMax);
+            points[draggingPoint].y = this.clamp(newY, yMin, yMax);
+
+            drawChart();
+            updateValue();
+        });
+
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
+            draggingPoint = null;
+        });
+
+        drawChart();
+
+        chartContainer.appendChild(canvas);
+        container.appendChild(chartContainer);
+
+        return container;
     }
 
     clearWidgets(widgetsArea) {

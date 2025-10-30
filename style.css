@@ -639,3 +639,215 @@ html, body {
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
     transform: translateY(-2px);
 }
+
+.notification-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 10000;
+    pointer-events: none;
+}
+
+.notification {
+    background: linear-gradient(135deg, var(--bg-darker) 0%, rgba(26, 26, 26, 0.95) 100%);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+    pointer-events: auto;
+    opacity: 0;
+    transform: translateX(400px);
+    animation: slideIn 0.3s ease forwards;
+    min-width: 300px;
+    max-width: 450px;
+}
+
+@keyframes slideIn {
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.notification.show {
+    animation: slideIn 0.3s ease forwards;
+}
+
+.notification {
+    animation: slideOut 0.3s ease forwards;
+}
+
+@keyframes slideOut {
+    from {
+        opacity: 1;
+        transform: translateX(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateX(400px);
+    }
+}
+
+.notification-content {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.notification-icon {
+    font-size: 20px;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.notification-message {
+    flex: 1;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1.4;
+    color: var(--text-light);
+}
+
+.notification-close {
+    background: none;
+    border: none;
+    color: #999;
+    cursor: pointer;
+    font-size: 18px;
+    padding: 0;
+    margin-left: 8px;
+    flex-shrink: 0;
+    transition: color 0.2s;
+}
+
+.notification-close:hover {
+    color: var(--text-light);
+}
+
+.notification-progress {
+    height: 2px;
+    background: linear-gradient(90deg, var(--primary-red) 0%, var(--light-red) 100%);
+    margin-top: 12px;
+    border-radius: 1px;
+    animation: progress 4s linear forwards;
+}
+
+@keyframes progress {
+    from {
+        width: 100%;
+    }
+    to {
+        width: 0%;
+    }
+}
+
+.notification-success {
+    border-left: 4px solid #4ade80;
+}
+
+.notification-success .notification-icon {
+    color: #4ade80;
+}
+
+.notification-error {
+    border-left: 4px solid #f87171;
+}
+
+.notification-error .notification-icon {
+    color: #f87171;
+}
+
+.notification-warning {
+    border-left: 4px solid #fbbf24;
+}
+
+.notification-warning .notification-icon {
+    color: #fbbf24;
+}
+
+.notification-info {
+    border-left: 4px solid var(--primary-red);
+}
+
+.notification-info .notification-icon {
+    color: var(--primary-red);
+}
+
+.slider-track {
+    position: relative;
+    margin: 20px 0;
+}
+
+.slider-value-display {
+    position: absolute;
+    top: -35px;
+    transform: translateX(-50%);
+    pointer-events: none;
+}
+
+.value-badge {
+    background: linear-gradient(135deg, var(--primary-red) 0%, var(--dark-red) 100%);
+    color: white;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+    box-shadow: 0 4px 12px rgba(139, 0, 0, 0.5);
+    border: 1px solid var(--light-red);
+}
+
+.value-badge::after {
+    content: '';
+    position: absolute;
+    bottom: -4px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0;
+    height: 0;
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-top: 6px solid var(--primary-red);
+}
+
+.slider-labels {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 10px;
+    font-size: 12px;
+    color: #999;
+    font-weight: 500;
+}
+
+.label-min,
+.label-max {
+    background: linear-gradient(135deg, rgba(139, 0, 0, 0.1) 0%, rgba(139, 0, 0, 0.05) 100%);
+    padding: 4px 12px;
+    border-radius: 4px;
+}
+
+.widget-chart2d {
+    margin: 20px 0;
+}
+
+.chart2d-container {
+    background: linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 100%);
+    border: 2px solid var(--border-color);
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.chart2d-canvas {
+    display: block;
+    border-radius: 8px;
+    background: #1a1a1a;
+    cursor: grab;
+    transition: box-shadow 0.3s ease;
+}
+
+.chart2d-canvas:active {
+    cursor: grabbing;
+    box-shadow: 0 0 20px rgba(139, 0, 0, 0.4);
+}
