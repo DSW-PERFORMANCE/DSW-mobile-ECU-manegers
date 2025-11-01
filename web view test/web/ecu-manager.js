@@ -105,14 +105,6 @@ class ECUManager {
         }
     }
 
-    switchToNode(nodeId, itemDiv, breadcrumb, widgets) {
-        this.selectNode(nodeId, itemDiv, breadcrumb);
-        this.modifiedWidgets.clear();
-        this.screenModified = false;
-        this.updateBreadcrumb();
-        this.renderWidgets(widgets, breadcrumb);
-    }
-
     selectNode(nodeId, itemDiv, breadcrumb) {
         document.querySelectorAll('.tree-item').forEach(item => {
             item.classList.remove('active');
@@ -122,48 +114,19 @@ class ECUManager {
         this.currentBreadcrumb = breadcrumb;
     }
 
-    updateBreadcrumb() {
-        const statusIndicator = document.getElementById('statusIndicator');
-        if (statusIndicator) {
-            if (this.screenModified) {
-                statusIndicator.className = 'status-indicator status-modified';
-                statusIndicator.title = 'Alterações não salvas';
-            } else if (this.currentNodeId) {
-                statusIndicator.className = 'status-indicator status-saved';
-                statusIndicator.title = 'Tudo salvo';
-            } else {
-                statusIndicator.style.display = 'none';
-            }
-        }
-    }
-
     renderWidgets(widgets, breadcrumbPath) {
         const widgetsArea = document.getElementById('widgetsArea');
         window.widgetManager.renderWidgets(
             widgets,
             widgetsArea,
             this.currentValues,
-            (command, value, widgetElement) => this.onValueChange(command, value, widgetElement),
-            breadcrumbPath,
-            this.modifiedWidgets
+            (command, value) => this.onValueChange(command, value),
+            breadcrumbPath
         );
-
-        this.savedValues = { ...this.currentValues };
     }
 
-    onValueChange(command, value, widgetElement) {
+    onValueChange(command, value) {
         this.currentValues[command] = value;
-        this.modifiedWidgets.add(command);
-        this.screenModified = true;
-        this.updateBreadcrumb();
-
-        if (widgetElement) {
-            const indicator = widgetElement.querySelector('.widget-modified-indicator');
-            if (indicator) {
-                indicator.style.display = 'block';
-            }
-        }
-
         console.log(`[VALOR ALTERADO] ${command} = ${value}`);
     }
 
@@ -175,17 +138,7 @@ class ECUManager {
             return;
         }
 
-        const success = await window.ecuCommunication.saveCurrentScreen(currentWidgets, this.currentValues);
-
-        if (success) {
-            this.modifiedWidgets.clear();
-            this.screenModified = false;
-            this.updateBreadcrumb();
-
-            document.querySelectorAll('.widget-modified-indicator').forEach(indicator => {
-                indicator.style.display = 'none';
-            });
-        }
+        await window.ecuCommunication.saveCurrentScreen(currentWidgets, this.currentValues);
     }
 
     async reloadCurrentScreen() {
@@ -199,9 +152,6 @@ class ECUManager {
         const reloadedValues = await window.ecuCommunication.reloadCurrentScreen(currentWidgets);
 
         Object.assign(this.currentValues, reloadedValues);
-        this.modifiedWidgets.clear();
-        this.screenModified = false;
-        this.updateBreadcrumb();
 
         if (this.currentNodeId) {
             const node = this.findNodeById(this.currentNodeId);

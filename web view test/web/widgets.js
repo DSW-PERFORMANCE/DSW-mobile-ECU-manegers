@@ -276,37 +276,14 @@ class WidgetManager {
         return container;
     }
 
-    renderWidgets(widgets, widgetsArea, currentValues, onValueChange, breadcrumbPath, modifiedWidgets = new Set()) {
+    renderWidgets(widgets, widgetsArea, currentValues, onValueChange, breadcrumbPath) {
         widgetsArea.innerHTML = '';
 
         if (breadcrumbPath) {
-            const headerRow = document.createElement('div');
-            headerRow.className = 'breadcrumb-header';
-
-            const homeBtn = document.createElement('button');
-            homeBtn.id = 'homeBtn';
-            homeBtn.className = 'home-btn';
-            homeBtn.title = 'Voltar para a página inicial';
-            homeBtn.innerHTML = '<i class="bi bi-house-fill"></i>';
-
             const breadcrumb = document.createElement('div');
             breadcrumb.className = 'breadcrumb-path';
-
-            const breadcrumbText = document.createElement('span');
-            breadcrumbText.textContent = breadcrumbPath;
-
-            const statusIndicator = document.createElement('div');
-            statusIndicator.id = 'statusIndicator';
-            statusIndicator.className = 'status-indicator';
-            statusIndicator.title = 'Alterações não salvas';
-
-            breadcrumb.appendChild(breadcrumbText);
-            breadcrumb.appendChild(statusIndicator);
-
-            headerRow.appendChild(homeBtn);
-            headerRow.appendChild(breadcrumb);
-
-            widgetsArea.appendChild(headerRow);
+            breadcrumb.textContent = breadcrumbPath;
+            widgetsArea.appendChild(breadcrumb);
         }
 
         this.setCurrentWidgets(widgets);
@@ -315,27 +292,10 @@ class WidgetManager {
             const container = document.createElement('div');
             container.className = 'widget-container';
 
-            const titleRow = document.createElement('div');
-            titleRow.className = 'widget-title-row';
-
             const title = document.createElement('div');
             title.className = 'widget-title';
             title.textContent = widget.title;
-
-            const modifiedIndicator = document.createElement('div');
-            modifiedIndicator.className = 'widget-modified-indicator';
-            modifiedIndicator.title = 'Widget alterado';
-
-            if (modifiedWidgets.has(widget.command)) {
-                modifiedIndicator.style.display = 'block';
-            } else {
-                modifiedIndicator.style.display = 'none';
-            }
-
-            titleRow.appendChild(title);
-            titleRow.appendChild(modifiedIndicator);
-
-            container.appendChild(titleRow);
+            container.appendChild(title);
 
             if (widget.help) {
                 const help = document.createElement('div');
@@ -348,9 +308,7 @@ class WidgetManager {
                 ? currentValues[widget.command]
                 : widget.default;
 
-            const widgetContent = this.createWidget(widget, currentValue, (cmd, val) => {
-                onValueChange(cmd, val, container);
-            });
+            const widgetContent = this.createWidget(widget, currentValue, onValueChange);
             container.appendChild(widgetContent);
 
             widgetsArea.appendChild(container);
