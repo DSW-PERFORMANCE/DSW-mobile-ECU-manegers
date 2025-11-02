@@ -125,9 +125,27 @@
                 {"label": "Distributivo", "value": "0"}
               ],
               "default": "0"
+            },{
+              "type": "chart2d",
+              "title": "Correção de Dwell por Voltagem",
+              "help": "Ajusta o tempo de carga conforme a tensão de alimentação.",
+              "command": "ignc/dl_perVol",     
+              "commandX": "None",              
+              "mode": "y",
+              "xFixed": [6, 8, 10, 12, 14, 16, 18],
+              "xMin": 6,
+              "xMax": 18,
+              "yMin": -50,
+              "xLabel": "Tensão (V)",
+              "yLabel": "Correção de Dwell (%)",
+              "yMax": 154,
+              "refLine": 100,
+              "default": "150,120,100,100,95,90,85"
             }
+
           ]
         }
+        
       ]
     },
     {

@@ -378,25 +378,35 @@ class WidgetManager {
         const xLabel = widget.xLabel || 'X';
         const yLabel = widget.yLabel || 'Y';
         const gridSize = widget.gridSize || 10;
+        const mode = widget.mode || 'xy';
+        const xFixed = widget.xFixed || null;
+        const refLine = widget.refLine ?? null;
+        const commandY = widget.command || null;
+        const commandX = widget.commandX && widget.commandX.toLowerCase() !== "none" ? widget.commandX : null;
 
+        // ---- Inicialização dos pontos ----
         let points = [];
         if (currentValue && typeof currentValue === 'string') {
             const values = currentValue.split(',').map(v => parseFloat(v.trim()));
 
-            if (widget.mode === 'xy') {
+            if (mode === 'xy') {
                 for (let i = 0; i < values.length; i += 2) {
-                    if (i + 1 < values.length) {
-                        points.push({ x: values[i], y: values[i + 1] });
-                    }
+                    if (i + 1 < values.length) points.push({ x: values[i], y: values[i + 1] });
+                }
+            } else if (mode === 'y' && xFixed && Array.isArray(xFixed)) {
+                for (let i = 0; i < xFixed.length; i++) {
+                    const yVal = values[i] ?? 0;
+                    points.push({ x: xFixed[i], y: yVal });
                 }
             } else {
-                points = values.map((y, idx) => ({ x: idx, y: y }));
+                points = values.map((y, idx) => ({ x: idx, y }));
             }
         }
 
         let draggingPoint = null;
         let isDragging = false;
 
+        // ---- Função de desenho ----
         const drawChart = () => {
             ctx.fillStyle = '#1a1a1a';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -407,7 +417,6 @@ class WidgetManager {
 
             ctx.strokeStyle = '#3a3a3a';
             ctx.lineWidth = 0.5;
-
             for (let i = 0; i <= gridSize; i++) {
                 const x = padding + (chartWidth / gridSize) * i;
                 const y = padding + (chartHeight / gridSize) * i;
@@ -423,14 +432,29 @@ class WidgetManager {
                 ctx.stroke();
             }
 
+            // Eixos
             ctx.strokeStyle = '#ffffff';
             ctx.lineWidth = 2;
             ctx.beginPath();
-            ctx.moveTo(padding, canvas.height - padding);
+            ctx.moveTo(padding, padding);
+            ctx.lineTo(padding, canvas.height - padding);
             ctx.lineTo(canvas.width - padding, canvas.height - padding);
-            ctx.lineTo(padding, padding);
             ctx.stroke();
 
+            // Linha de referência opcional
+            if (refLine !== null) {
+                const yRef = canvas.height - padding - ((refLine - yMin) / (yMax - yMin)) * chartHeight;
+                ctx.strokeStyle = '#666';
+                ctx.lineWidth = 1;
+                ctx.setLineDash([5, 5]);
+                ctx.beginPath();
+                ctx.moveTo(padding, yRef);
+                ctx.lineTo(canvas.width - padding, yRef);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+
+            // Labels
             ctx.fillStyle = '#ffffff';
             ctx.font = '14px Arial';
             ctx.textAlign = 'center';
@@ -444,7 +468,6 @@ class WidgetManager {
 
             ctx.font = '12px Arial';
             ctx.fillStyle = '#999999';
-
             for (let i = 0; i <= gridSize; i++) {
                 const x = padding + (chartWidth / gridSize) * i;
                 const xValue = xMin + (xMax - xMin) * (i / gridSize);
@@ -465,12 +488,8 @@ class WidgetManager {
                 points.forEach((point, idx) => {
                     const px = padding + ((point.x - xMin) / (xMax - xMin)) * chartWidth;
                     const py = canvas.height - padding - ((point.y - yMin) / (yMax - yMin)) * chartHeight;
-
-                    if (idx === 0) {
-                        ctx.moveTo(px, py);
-                    } else {
-                        ctx.lineTo(px, py);
-                    }
+                    if (idx === 0) ctx.moveTo(px, py);
+                    else ctx.lineTo(px, py);
                 });
 
                 ctx.stroke();
@@ -482,7 +501,6 @@ class WidgetManager {
                 points.forEach(point => {
                     const px = padding + ((point.x - xMin) / (xMax - xMin)) * chartWidth;
                     const py = canvas.height - padding - ((point.y - yMin) / (yMax - yMin)) * chartHeight;
-
                     ctx.beginPath();
                     ctx.arc(px, py, 6, 0, Math.PI * 2);
                     ctx.fill();
@@ -491,19 +509,23 @@ class WidgetManager {
             }
         };
 
+        // ---- Envio dos valores ----
         const updateValue = () => {
-            if (widget.mode === 'xy') {
-                const formattedValue = points.map(p => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(',');
-                onValueChange(widget.commandX, formattedValue);
-                if (widget.commandY) {
-                    onValueChange(widget.commandY, formattedValue);
-                }
+            if (mode === 'xy') {
+                const xVals = points.map(p => p.x.toFixed(2)).join(',');
+                const yVals = points.map(p => p.y.toFixed(2)).join(',');
+
+                if (commandX) onValueChange(commandX, xVals);
+                else onValueChange(commandY, points.map(p => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(','));
+
+                if (commandY && commandX) onValueChange(commandY, yVals);
             } else {
-                const formattedValue = points.map(p => p.y.toFixed(2)).join(',');
-                onValueChange(widget.command, formattedValue);
+                const yVals = points.map(p => p.y.toFixed(2)).join(',');
+                onValueChange(commandY, yVals);
             }
         };
 
+        // ---- Interação ----
         canvas.addEventListener('mousedown', (e) => {
             const rect = canvas.getBoundingClientRect();
             const mouseX = e.clientX - rect.left;
@@ -516,7 +538,6 @@ class WidgetManager {
             points.forEach((point, idx) => {
                 const px = padding + ((point.x - xMin) / (xMax - xMin)) * chartWidth;
                 const py = canvas.height - padding - ((point.y - yMin) / (yMax - yMin)) * chartHeight;
-
                 const dist = Math.sqrt((mouseX - px) ** 2 + (mouseY - py) ** 2);
                 if (dist < 10) {
                     draggingPoint = idx;
@@ -539,7 +560,7 @@ class WidgetManager {
             const newX = xMin + ((mouseX - padding) / chartWidth) * (xMax - xMin);
             const newY = yMin + ((canvas.height - padding - mouseY) / chartHeight) * (yMax - yMin);
 
-            points[draggingPoint].x = this.clamp(newX, xMin, xMax);
+            if (mode === 'xy') points[draggingPoint].x = this.clamp(newX, xMin, xMax);
             points[draggingPoint].y = this.clamp(newY, yMin, yMax);
 
             drawChart();
@@ -552,12 +573,11 @@ class WidgetManager {
         });
 
         drawChart();
-
         chartContainer.appendChild(canvas);
         container.appendChild(chartContainer);
-
         return container;
     }
+
 
     clearWidgets(widgetsArea) {
         widgetsArea.innerHTML = `
