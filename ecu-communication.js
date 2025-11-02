@@ -62,7 +62,6 @@ class ECUCommunication {
 
     async saveCurrentScreen(widgets, currentValues) {
         console.log('=== SALVANDO WIDGETS DA TELA ATUAL ===');
-  
 
         if (!this.isOnline) {
             console.warn('[OFFLINE] Não é possível salvar enquanto offline');

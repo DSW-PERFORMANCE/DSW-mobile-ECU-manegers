@@ -91,14 +91,18 @@ class ECUBridge:
             return {"ok": False, "error": str(e)}
 
 if __name__ == "__main__":
+
     api = ECUBridge(port="COM10", baudrate=115200)
 
     window = webview.create_window(
-        "ECU Interface",
+        "DSW ECU",
         "web/index.html",
         js_api=api,
         width=1000,
         height=700,
+        background_color="#333333",
+        min_size=(893,504),
+        
     )
 
-    webview.start(debug=False)
+    webview.start(debug=False,icon="web/icon.ico")

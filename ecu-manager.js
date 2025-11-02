@@ -4,6 +4,9 @@ class ECUManager {
         this.currentValues = {};
         this.currentNodeId = null;
         this.currentBreadcrumb = '';
+        this.modifiedWidgets = new Set();
+        this.screenModified = false;
+        this.savedValues = {};
     }
 
     async init() {
@@ -13,6 +16,7 @@ class ECUManager {
         window.ecuCommunication.setConfig(this.config);
         window.ecuCommunication.setStatus(false);
         this.currentValues = window.ecuCommunication.getAllDefaultValues();
+        await this.autoReloadOnStartup();
     }
 
     async loadConfig() {
@@ -24,10 +28,16 @@ class ECUManager {
         }
     }
 
+    async autoReloadOnStartup() {
+        await this.reloadCurrentScreen();
+    }
+
     setupEventListeners() {
         document.getElementById('saveBtn').addEventListener('click', () => this.saveCurrentScreen());
         document.getElementById('reloadBtn').addEventListener('click', () => this.reloadCurrentScreen());
         document.getElementById('searchInput').addEventListener('input', (e) => this.searchTree(e.target.value));
+
+        setTimeout(() => this.setupHomeButton(), 100);
     }
 
     renderTree() {
@@ -73,8 +83,7 @@ class ECUManager {
                     this.toggleNode(nodeDiv, itemDiv);
                 }
                 if (hasWidgets) {
-                    this.selectNode(node.id, itemDiv, currentPath);
-                    this.renderWidgets(node.widgets, currentPath);
+                    this.switchToNode(node.id, itemDiv, currentPath, node.widgets);
                 }
             });
 
@@ -105,12 +114,25 @@ class ECUManager {
         }
     }
 
-    switchToNode(nodeId, itemDiv, breadcrumb, widgets) {
+    async switchToNode(nodeId, itemDiv, breadcrumb, widgets) {
+        if (this.screenModified) {
+            const shouldContinue = await window.dialogManager.confirm(
+                'Alterações não salvas',
+                'Existem alterações não salvas. Deseja continuar sem salvar?'
+            );
+
+            if (!shouldContinue) {
+                return;
+            }
+        }
+
         this.selectNode(nodeId, itemDiv, breadcrumb);
         this.modifiedWidgets.clear();
         this.screenModified = false;
         this.updateBreadcrumb();
         this.renderWidgets(widgets, breadcrumb);
+
+        setTimeout(() => this.setupHomeButton(), 0);
     }
 
     selectNode(nodeId, itemDiv, breadcrumb) {
@@ -126,9 +148,11 @@ class ECUManager {
         const statusIndicator = document.getElementById('statusIndicator');
         if (statusIndicator) {
             if (this.screenModified) {
+                statusIndicator.style.display = 'block';
                 statusIndicator.className = 'status-indicator status-modified';
                 statusIndicator.title = 'Alterações não salvas';
             } else if (this.currentNodeId) {
+                statusIndicator.style.display = 'block';
                 statusIndicator.className = 'status-indicator status-saved';
                 statusIndicator.title = 'Tudo salvo';
             } else {
@@ -248,6 +272,51 @@ class ECUManager {
             });
             document.querySelectorAll('.tree-item').forEach(item => {
                 item.classList.add('expanded');
+            });
+        }
+    }
+
+    goHome() {
+        this.currentNodeId = null;
+        this.currentBreadcrumb = '';
+        this.modifiedWidgets.clear();
+        this.screenModified = false;
+
+        document.querySelectorAll('.tree-item').forEach(item => {
+            item.classList.remove('active');
+        });
+
+        const widgetsArea = document.getElementById('widgetsArea');
+        widgetsArea.innerHTML = '';
+        widgetsArea.appendChild(this.createEmptyState());
+    }
+
+    createEmptyState() {
+        const emptyState = document.createElement('div');
+        emptyState.className = 'empty-state';
+        emptyState.innerHTML = `
+            <i class="bi bi-gear"></i>
+            <p>Selecione um item na árvore para configurar</p>
+        `;
+        return emptyState;
+    }
+
+    setupHomeButton() {
+        const homeBtn = document.getElementById('homeBtn');
+        if (homeBtn) {
+            homeBtn.removeEventListener('click', () => {});
+            homeBtn.addEventListener('click', async () => {
+                if (this.screenModified) {
+                    const shouldContinue = await window.dialogManager.confirm(
+                        'Alterações não salvas',
+                        'Existem alterações não salvas. Deseja voltar sem salvar?'
+                    );
+
+                    if (!shouldContinue) {
+                        return;
+                    }
+                }
+                this.goHome();
             });
         }
     }

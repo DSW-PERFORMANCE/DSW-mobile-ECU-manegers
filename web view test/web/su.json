@@ -96,18 +96,6 @@
               "max": 40,
               "default": 15,
               "unit": "°"
-            },
-            {
-              "type": "combobox",
-              "title": "Modo de Ignição",
-              "help": "Selecione o modo de operação da ignição",
-              "command": "ign_mode",
-              "options": [
-                {"label": "Sequencial", "value": "0"},
-                {"label": "Semi-Sequencial", "value": "1"},
-                {"label": "Distributivo", "value": "2"}
-              ],
-              "default": "0"
             }
           ]
         },
@@ -125,6 +113,18 @@
               "max": 14,
               "default": 4,
               "unit": "ms"
+            },
+            {
+              "type": "combobox",
+              "title": "Modo de Ignição",
+              "help": "Selecione o modo de operação da ignição",
+              "command": "tipologia/padrao/ingn",
+              "options": [
+                {"label": "Sequencial", "value": "2"},
+                {"label": "Semi-Sequencial", "value": "1"},
+                {"label": "Distributivo", "value": "0"}
+              ],
+              "default": "0"
             }
           ]
         }
