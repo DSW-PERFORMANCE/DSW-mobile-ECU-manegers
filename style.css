@@ -384,7 +384,7 @@ html, body {
 .breadcrumb-header {
     display: flex;
     align-items: center;
-    gap: 20px;
+    gap: 12px;
     margin-bottom: 30px;
     padding-bottom: 15px;
     border-bottom: 2px solid var(--border-color);
@@ -416,14 +416,47 @@ html, body {
     transform: translateY(0);
 }
 
+.breadcrumb-strip {
+    flex: 1;
+    background: linear-gradient(90deg, rgba(139, 0, 0, 0.08) 0%, rgba(139, 0, 0, 0.04) 100%);
+    border: 1px solid rgba(139, 0, 0, 0.2);
+    border-radius: 10px;
+    padding: 12px 20px;
+}
+
 .breadcrumb-path {
     display: flex;
     align-items: center;
-    gap: 15px;
-    flex: 1;
-    font-size: 24px;
-    font-weight: 700;
+    gap: 12px;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--light-red);
+}
+
+.copy-breadcrumb-btn {
+    background: transparent;
+    border: 1px solid var(--border-color);
     color: var(--text-light);
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.copy-breadcrumb-btn:hover {
+    background: rgba(139, 0, 0, 0.1);
+    border-color: var(--light-red);
+    color: var(--light-red);
+}
+
+.copy-breadcrumb-btn:active {
+    transform: scale(0.95);
 }
 
 .status-indicator {
@@ -469,49 +502,84 @@ html, body {
     flex-shrink: 0;
 }
 
+.widget-slider {
+    width: 100%;
+}
+
+.slider-track {
+    position: relative;
+    margin: 15px 0;
+}
+
 .custom-slider {
     -webkit-appearance: none;
     appearance: none;
     width: 100%;
-    height: 8px;
+    height: 6px;
     background: linear-gradient(90deg, var(--border-color) 0%, var(--primary-red) 100%);
-    border-radius: 4px;
+    border-radius: 3px;
     outline: none;
     box-shadow: 0 2px 8px rgba(139, 0, 0, 0.3);
+    cursor: pointer;
+    transition: background 0.3s ease;
+}
+
+.custom-slider:hover {
+    background: linear-gradient(90deg, #4a4a4a 0%, var(--light-red) 100%);
+    box-shadow: 0 2px 12px rgba(139, 0, 0, 0.5);
 }
 
 .custom-slider::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
-    width: 24px;
-    height: 24px;
-    background: var(--primary-red);
+    width: 28px;
+    height: 28px;
+    background: linear-gradient(135deg, var(--primary-red) 0%, var(--light-red) 100%);
     border-radius: 50%;
-    cursor: pointer;
+    cursor: grab;
     box-shadow: 0 0 15px rgba(139, 0, 0, 0.8), 0 0 30px rgba(139, 0, 0, 0.4);
-    border: 3px solid var(--light-red);
-    transition: all 0.2s ease;
+    border: 3px solid white;
+    transition: all 0.15s ease;
 }
 
 .custom-slider::-webkit-slider-thumb:hover {
-    transform: scale(1.2);
+    transform: scale(1.15);
     box-shadow: 0 0 20px rgba(139, 0, 0, 1), 0 0 40px rgba(139, 0, 0, 0.6);
+    cursor: grabbing;
+}
+
+.custom-slider::-webkit-slider-thumb:active {
+    transform: scale(1.1);
 }
 
 .custom-slider::-moz-range-thumb {
-    width: 24px;
-    height: 24px;
-    background: var(--primary-red);
+    width: 28px;
+    height: 28px;
+    background: linear-gradient(135deg, var(--primary-red) 0%, var(--light-red) 100%);
     border-radius: 50%;
-    cursor: pointer;
+    cursor: grab;
     box-shadow: 0 0 15px rgba(139, 0, 0, 0.8), 0 0 30px rgba(139, 0, 0, 0.4);
-    border: 3px solid var(--light-red);
-    transition: all 0.2s ease;
+    border: 3px solid white;
+    transition: all 0.15s ease;
 }
 
 .custom-slider::-moz-range-thumb:hover {
-    transform: scale(1.2);
+    transform: scale(1.15);
     box-shadow: 0 0 20px rgba(139, 0, 0, 1), 0 0 40px rgba(139, 0, 0, 0.6);
+    cursor: grabbing;
+}
+
+.custom-slider::-moz-range-thumb:active {
+    transform: scale(1.1);
+}
+
+.custom-slider::-moz-range-track {
+    background: transparent;
+    border: none;
+}
+
+.custom-slider::-moz-range-progress {
+    background: transparent;
 }
 
 .widget-spinbox {
@@ -924,7 +992,6 @@ html, body {
     background: #1a1a1a;
     cursor: grab;
     transition: box-shadow 0.3s ease;
-   
 }
 
 .chart2d-canvas:active {

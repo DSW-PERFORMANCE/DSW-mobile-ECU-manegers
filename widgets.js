@@ -289,11 +289,27 @@ class WidgetManager {
             homeBtn.title = 'Voltar para a página inicial';
             homeBtn.innerHTML = '<i class="bi bi-house-fill"></i>';
 
+            const headerStrip = document.createElement('div');
+            headerStrip.className = 'breadcrumb-strip';
+
             const breadcrumb = document.createElement('div');
             breadcrumb.className = 'breadcrumb-path';
 
             const breadcrumbText = document.createElement('span');
             breadcrumbText.textContent = breadcrumbPath;
+
+            const copyBtn = document.createElement('button');
+            copyBtn.className = 'copy-breadcrumb-btn';
+            copyBtn.title = 'Copiar caminho';
+            copyBtn.innerHTML = '<i class="bi bi-clipboard"></i>';
+            copyBtn.addEventListener('click', () => {
+                navigator.clipboard.writeText(breadcrumbPath);
+                const originalText = copyBtn.innerHTML;
+                copyBtn.innerHTML = '<i class="bi bi-check2"></i>';
+                setTimeout(() => {
+                    copyBtn.innerHTML = originalText;
+                }, 2000);
+            });
 
             const statusIndicator = document.createElement('div');
             statusIndicator.id = 'statusIndicator';
@@ -301,10 +317,13 @@ class WidgetManager {
             statusIndicator.title = 'Alterações não salvas';
 
             breadcrumb.appendChild(breadcrumbText);
+            breadcrumb.appendChild(copyBtn);
             breadcrumb.appendChild(statusIndicator);
 
+            headerStrip.appendChild(breadcrumb);
+
             headerRow.appendChild(homeBtn);
-            headerRow.appendChild(breadcrumb);
+            headerRow.appendChild(headerStrip);
 
             widgetsArea.appendChild(headerRow);
         }

@@ -129,10 +129,43 @@ class ECUManager {
         this.selectNode(nodeId, itemDiv, breadcrumb);
         this.modifiedWidgets.clear();
         this.screenModified = false;
+        this.savedValues = { ...this.currentValues };
         this.updateBreadcrumb();
         this.renderWidgets(widgets, breadcrumb);
 
-        setTimeout(() => this.setupHomeButton(), 0);
+        setTimeout(() => {
+            this.setupHomeButton();
+            this.autoReloadCurrentScreen();
+        }, 0);
+    }
+
+    async autoReloadCurrentScreen() {
+        const currentWidgets = window.widgetManager.getCurrentWidgets();
+        if (currentWidgets.length === 0) return;
+
+        const reloadedValues = await window.ecuCommunication.reloadCurrentScreen(currentWidgets);
+        Object.assign(this.currentValues, reloadedValues);
+        this.savedValues = { ...this.currentValues };
+
+        setTimeout(() => {
+            const widgetContainers = document.querySelectorAll('.widget-container');
+            widgetContainers.forEach(container => {
+                const inputs = container.querySelectorAll('input, textarea, select');
+                inputs.forEach(input => {
+                    const command = input.dataset.command;
+                    if (command && this.currentValues[command] !== undefined) {
+                        if (input.type === 'checkbox') {
+                            input.checked = this.currentValues[command] == 1;
+                        } else if (input.type === 'range') {
+                            input.value = this.currentValues[command];
+                            input.dispatchEvent(new Event('input', { bubbles: true }));
+                        } else {
+                            input.value = this.currentValues[command];
+                        }
+                    }
+                });
+            });
+        }, 50);
     }
 
     selectNode(nodeId, itemDiv, breadcrumb) {
@@ -177,14 +210,24 @@ class ECUManager {
 
     onValueChange(command, value, widgetElement) {
         this.currentValues[command] = value;
-        this.modifiedWidgets.add(command);
-        this.screenModified = true;
+
+        if (this.savedValues[command] !== value) {
+            this.modifiedWidgets.add(command);
+        } else {
+            this.modifiedWidgets.delete(command);
+        }
+
+        this.screenModified = this.modifiedWidgets.size > 0;
         this.updateBreadcrumb();
 
         if (widgetElement) {
             const indicator = widgetElement.querySelector('.widget-modified-indicator');
             if (indicator) {
-                indicator.style.display = 'block';
+                if (this.modifiedWidgets.has(command)) {
+                    indicator.style.display = 'block';
+                } else {
+                    indicator.style.display = 'none';
+                }
             }
         }
 
