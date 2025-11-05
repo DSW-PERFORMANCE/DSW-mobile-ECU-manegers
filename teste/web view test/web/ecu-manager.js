@@ -293,31 +293,45 @@ class ECUManager {
         return search(this.config.tree);
     }
 
-    searchTree(query) {
-        const lowerQuery = query.toLowerCase();
-        const nodes = document.querySelectorAll('.tree-node');
+  
 
-        nodes.forEach(node => {
-            const label = node.querySelector('.tree-item span:last-child');
-            if (label) {
-                const text = label.textContent.toLowerCase();
-                if (text.includes(lowerQuery) || query === '') {
-                    node.style.display = '';
-                } else {
-                    node.style.display = 'none';
+    searchTree(query) {
+        const q = query.trim().toLowerCase();
+        const roots = document.querySelectorAll('#treeView .tree-root');
+
+        roots.forEach(root => {
+            const spans = root.querySelectorAll('.tree-item span');
+            let matchFound = false;
+
+            spans.forEach(span => {
+                const text = span.textContent;
+                span.innerHTML = text; // limpa highlight
+
+                if (q && text.toLowerCase().includes(q)) {
+                    matchFound = true;
+                    const regex = new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+                    span.innerHTML = text.replace(regex, '<mark>$1</mark>');
                 }
+            });
+
+            // mostra ou oculta a árvore
+            root.style.display = matchFound || !q ? '' : 'none';
+
+            // expande se achou algo
+            const children = root.querySelectorAll('.tree-children');
+            const items = root.querySelectorAll('.tree-item');
+
+            if (matchFound && q) {
+                children.forEach(c => c.classList.add('show'));
+                items.forEach(i => i.classList.add('expanded'));
+            } else if (!q) {
+                children.forEach(c => c.classList.remove('show'));
+                items.forEach(i => i.classList.remove('expanded'));
             }
         });
-
-        if (query) {
-            document.querySelectorAll('.tree-children').forEach(children => {
-                children.classList.add('show');
-            });
-            document.querySelectorAll('.tree-item').forEach(item => {
-                item.classList.add('expanded');
-            });
-        }
     }
+
+
 
     goHome() {
         this.currentNodeId = null;

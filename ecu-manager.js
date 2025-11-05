@@ -293,31 +293,43 @@ class ECUManager {
         return search(this.config.tree);
     }
 
+  
+
     searchTree(query) {
-        const lowerQuery = query.toLowerCase();
-        const nodes = document.querySelectorAll('.tree-node');
+        const q = query.trim().toLowerCase();
+        const roots = document.querySelectorAll('#treeView .tree-root');
 
-        nodes.forEach(node => {
-            const label = node.querySelector('.tree-item span:last-child');
-            if (label) {
-                const text = label.textContent.toLowerCase();
-                if (text.includes(lowerQuery) || query === '') {
-                    node.style.display = '';
-                } else {
-                    node.style.display = 'none';
+        roots.forEach(root => {
+            let found = false;
+
+            root.querySelectorAll('.tree-item span').forEach(span => {
+                const text = span.textContent;
+                span.innerHTML = text; // limpa highlight
+
+                if (q && text.toLowerCase().includes(q)) {
+                    found = true;
+                    span.innerHTML = text.replace(
+                        new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'),
+                        '<mark>$1</mark>'
+                    );
                 }
-            }
-        });
+            });
 
-        if (query) {
-            document.querySelectorAll('.tree-children').forEach(children => {
-                children.classList.add('show');
-            });
-            document.querySelectorAll('.tree-item').forEach(item => {
-                item.classList.add('expanded');
-            });
-        }
+            // mostra se achou ou se o campo está vazio
+            root.style.display = found || !q ? '' : 'none';
+
+            // expande ou recolhe
+            root.querySelectorAll('.tree-children').forEach(c =>
+                c.classList.toggle('show', !!q && found)
+            );
+            root.querySelectorAll('.tree-item').forEach(i =>
+                i.classList.toggle('expanded', !!q && found)
+            );
+        });
     }
+
+
+
 
     goHome() {
         this.currentNodeId = null;
