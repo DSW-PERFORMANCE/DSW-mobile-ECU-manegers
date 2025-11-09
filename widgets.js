@@ -385,8 +385,23 @@ class WidgetManager {
 
         const canvas = document.createElement('canvas');
         canvas.className = 'chart2d-canvas';
-        canvas.width = widget.width || 400;
-        canvas.height = widget.height || 300;
+        
+        // Define as dimensões iniciais
+        const containerWidth = chartContainer.clientWidth - 40; // 40 é o padding total
+        canvas.width = containerWidth;
+        canvas.height = widget.height || Math.min(300, containerWidth * 0.6);
+        
+        // Adiciona listener para redimensionamento
+        const resizeObserver = new ResizeObserver(entries => {
+            for (let entry of entries) {
+                const newWidth = entry.contentRect.width - 40;
+                canvas.width = newWidth;
+                canvas.height = widget.height || Math.min(300, newWidth * 0.6);
+                drawChart(); // Redesenha o gráfico
+            }
+        });
+        
+        resizeObserver.observe(chartContainer);
 
         const ctx = canvas.getContext('2d');
 
