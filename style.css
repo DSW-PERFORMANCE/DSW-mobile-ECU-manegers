@@ -81,6 +81,15 @@ html, body {
     color: white;
 }
 
+mark {
+    background: linear-gradient(120deg, rgba(251, 191, 36, 0.9) 0%, rgba(245, 158, 11, 0.9) 100%);
+    color: #000;
+    font-weight: 700;
+    padding: 2px 4px;
+    border-radius: 3px;
+    box-shadow: 0 2px 8px rgba(251, 191, 36, 0.5);
+}
+
 .tree-view {
     flex: 1;
     overflow-y: auto;
@@ -924,13 +933,17 @@ html, body {
 .slider-track {
     position: relative;
     margin: 20px 0;
+    padding-bottom: 40px;
 }
 
 .slider-value-display {
     position: absolute;
-    top: -35px;
+    bottom: 0;
+    left: 50%;
     transform: translateX(-50%);
     pointer-events: none;
+    display: flex;
+    justify-content: center;
 }
 
 .value-badge {
@@ -995,6 +1008,36 @@ html, body {
     transition: box-shadow 0.3s ease;
     width: 100%;
     height: auto;
+}
+
+.chart2d-value-tooltip {
+    position: fixed;
+    background: linear-gradient(135deg, var(--primary-red) 0%, var(--dark-red) 100%);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    pointer-events: none;
+    box-shadow: 0 4px 12px rgba(139, 0, 0, 0.6);
+    z-index: 10000;
+    display: none;
+    border: 1px solid var(--light-red);
+    transform: translateY(-10px);
+}
+
+.chart2d-value-tooltip::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0;
+    height: 0;
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-top: 6px solid var(--primary-red);
 }
 
 .chart2d-canvas:active {
@@ -1111,4 +1154,14 @@ html, body {
 .dialog-btn-retry:hover {
     transform: translateY(-2px);
     box-shadow: 0 6px 16px rgba(59, 130, 246, 0.6);
+}
+
+input[type="number"] {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+input[type="number"]:focus {
+    outline: none;
+    border-color: var(--primary-red) !important;
+    box-shadow: 0 0 12px rgba(139, 0, 0, 0.5) !important;
 }

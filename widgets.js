@@ -66,8 +66,6 @@ class WidgetManager {
         slider.value = currentValue;
         slider.className = 'form-range custom-slider';
 
-        const percentage = ((currentValue - widget.min) / (widget.max - widget.min)) * 100;
-
         const valueDisplay = document.createElement('div');
         valueDisplay.className = 'slider-value-display';
         valueDisplay.innerHTML = `
@@ -77,15 +75,9 @@ class WidgetManager {
         slider.addEventListener('input', (e) => {
             const validValue = this.clamp(parseFloat(e.target.value), widget.min, widget.max);
             e.target.value = validValue;
-
-            const newPercentage = ((validValue - widget.min) / (widget.max - widget.min)) * 100;
-            valueDisplay.style.left = `calc(${newPercentage}% - 30px)`;
             valueDisplay.querySelector('.value-badge').textContent = `${validValue}${widget.unit || ''}`;
-
             onValueChange(widget.command, validValue);
         });
-
-        valueDisplay.style.left = `calc(${percentage}% - 30px)`;
 
         const rangeLabels = document.createElement('div');
         rangeLabels.className = 'slider-labels';
@@ -388,13 +380,13 @@ class WidgetManager {
         
         // Define as dimensões iniciais
         const containerWidth = chartContainer.clientWidth - 40; // 40 é o padding total
-        canvas.width = containerWidth;
-        canvas.height = widget.height || Math.min(300, containerWidth * 0.6);
+        canvas.width = Math.max(containerWidth, 400);
+        canvas.height = widget.height || Math.min(300, canvas.width * 0.6);
         
         // Adiciona listener para redimensionamento
         const resizeObserver = new ResizeObserver(entries => {
             for (let entry of entries) {
-                const newWidth = entry.contentRect.width - 40;
+                const newWidth = Math.max(entry.contentRect.width - 40, 400);
                 canvas.width = newWidth;
                 canvas.height = widget.height || Math.min(300, newWidth * 0.6);
                 drawChart(); // Redesenha o gráfico
@@ -439,6 +431,27 @@ class WidgetManager {
 
         let draggingPoint = null;
         let isDragging = false;
+        let tooltipDiv = null;
+        const hitRadius = 20; // Aumenta a área de captura dos pontos
+        
+        const showValueTooltip = (x, y, xVal, yVal) => {
+            if (!tooltipDiv) {
+                tooltipDiv = document.createElement('div');
+                tooltipDiv.className = 'chart2d-value-tooltip';
+                document.body.appendChild(tooltipDiv);
+            }
+            
+            tooltipDiv.style.display = 'block';
+            tooltipDiv.style.left = `${x}px`;
+            tooltipDiv.style.top = `${y - 35}px`; // Posiciona acima do mouse
+            tooltipDiv.textContent = `X: ${xVal.toFixed(2)}, Y: ${yVal.toFixed(2)}`;
+        };
+        
+        const hideValueTooltip = () => {
+            if (tooltipDiv) {
+                tooltipDiv.style.display = 'none';
+            }
+        };
 
         // ---- Função de desenho ----
         const drawChart = () => {
@@ -536,7 +549,7 @@ class WidgetManager {
                     const px = padding + ((point.x - xMin) / (xMax - xMin)) * chartWidth;
                     const py = canvas.height - padding - ((point.y - yMin) / (yMax - yMin)) * chartHeight;
                     ctx.beginPath();
-                    ctx.arc(px, py, 6, 0, Math.PI * 2);
+                    ctx.arc(px, py, 8, 0, Math.PI * 2); // Aumenta o raio do ponto de 6 para 8
                     ctx.fill();
                     ctx.stroke();
                 });
@@ -569,20 +582,45 @@ class WidgetManager {
             const chartWidth = canvas.width - padding * 2;
             const chartHeight = canvas.height - padding * 2;
 
-            points.forEach((point, idx) => {
+            let pointFound = false;
+            for (let idx = 0; idx < points.length; idx++) {
+                const point = points[idx];
                 const px = padding + ((point.x - xMin) / (xMax - xMin)) * chartWidth;
                 const py = canvas.height - padding - ((point.y - yMin) / (yMax - yMin)) * chartHeight;
                 const dist = Math.sqrt((mouseX - px) ** 2 + (mouseY - py) ** 2);
-                if (dist < 10) {
-                    draggingPoint = idx;
-                    isDragging = true;
+                
+                if (dist < hitRadius) {
+                    // Shift+Click para editar coordenadas
+                    if (e.shiftKey) {
+                        e.preventDefault();
+                        (async () => {
+                            const result = await window.dialogManager.editPointCoordinates(
+                                point,
+                                xMin, xMax,
+                                yMin, yMax,
+                                mode === 'y' && xFixed !== null // X é bloqueado se mode é 'y'
+                            );
+                            if (result) {
+                                points[idx].x = result.x;
+                                points[idx].y = result.y;
+                                if (mode === 'y' && xFixed && Array.isArray(xFixed)) {
+                                    points.sort((a, b) => a.x - b.x);
+                                }
+                                drawChart();
+                                updateValue();
+                            }
+                        })();
+                    } else {
+                        draggingPoint = idx;
+                        isDragging = true;
+                        pointFound = true;
+                    }
+                    break;
                 }
-            });
+            }
         });
 
-        document.addEventListener('mousemove', (e) => {
-            if (!isDragging || draggingPoint === null) return;
-
+        canvas.addEventListener('mousemove', (e) => {
             const rect = canvas.getBoundingClientRect();
             const mouseX = e.clientX - rect.left;
             const mouseY = e.clientY - rect.top;
@@ -591,19 +629,45 @@ class WidgetManager {
             const chartWidth = canvas.width - padding * 2;
             const chartHeight = canvas.height - padding * 2;
 
-            const newX = xMin + ((mouseX - padding) / chartWidth) * (xMax - xMin);
-            const newY = yMin + ((canvas.height - padding - mouseY) / chartHeight) * (yMax - yMin);
+            // Muda o cursor quando está sobre um ponto
+            let onPoint = false;
+            for (let idx = 0; idx < points.length; idx++) {
+                const point = points[idx];
+                const px = padding + ((point.x - xMin) / (xMax - xMin)) * chartWidth;
+                const py = canvas.height - padding - ((point.y - yMin) / (yMax - yMin)) * chartHeight;
+                const dist = Math.sqrt((mouseX - px) ** 2 + (mouseY - py) ** 2);
+                
+                if (dist < hitRadius) {
+                    canvas.style.cursor = 'grab';
+                    canvas.title = 'Arraste para mover • Shift+Clique para editar';
+                    onPoint = true;
+                    break;
+                }
+            }
+            if (!onPoint) {
+                canvas.style.cursor = isDragging ? 'grabbing' : 'grab';
+                canvas.title = '';
+            }
 
-            if (mode === 'xy') points[draggingPoint].x = this.clamp(newX, xMin, xMax);
-            points[draggingPoint].y = this.clamp(newY, yMin, yMax);
+            if (isDragging && draggingPoint !== null) {
+                const newX = xMin + ((mouseX - padding) / chartWidth) * (xMax - xMin);
+                const newY = yMin + ((canvas.height - padding - mouseY) / chartHeight) * (yMax - yMin);
 
-            drawChart();
-            updateValue();
+                if (mode === 'xy') points[draggingPoint].x = this.clamp(newX, xMin, xMax);
+                points[draggingPoint].y = this.clamp(newY, yMin, yMax);
+
+                showValueTooltip(e.clientX, e.clientY, points[draggingPoint].x, points[draggingPoint].y);
+                drawChart();
+                updateValue();
+            }
         });
 
         document.addEventListener('mouseup', () => {
-            isDragging = false;
-            draggingPoint = null;
+            if (isDragging) {
+                hideValueTooltip();
+                isDragging = false;
+                draggingPoint = null;
+            }
         });
 
         drawChart();

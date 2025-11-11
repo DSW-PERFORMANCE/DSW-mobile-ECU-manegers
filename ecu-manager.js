@@ -297,34 +297,78 @@ class ECUManager {
 
     searchTree(query) {
         const q = query.trim().toLowerCase();
-        const roots = document.querySelectorAll('#treeView .tree-root');
-
-        roots.forEach(root => {
-            let found = false;
-
-            root.querySelectorAll('.tree-item span').forEach(span => {
-                const text = span.textContent;
-                span.innerHTML = text; // limpa highlight
-
-                if (q && text.toLowerCase().includes(q)) {
-                    found = true;
-                    span.innerHTML = text.replace(
-                        new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'),
-                        '<mark>$1</mark>'
-                    );
+        const treeView = document.getElementById('treeView');
+        const allNodes = treeView.querySelectorAll('.tree-node');
+        
+        if (!q) {
+            // Se a busca está vazia, volta ao estado normal
+            allNodes.forEach(node => {
+                node.style.display = '';
+                const itemDiv = node.querySelector('.tree-item');
+                if (itemDiv) {
+                    const span = itemDiv.querySelector('span:last-child');
+                    if (span) {
+                        const originalText = span.textContent;
+                        span.innerHTML = originalText;
+                    }
                 }
             });
+            return;
+        }
 
-            // mostra se achou ou se o campo está vazio
-            root.style.display = found || !q ? '' : 'none';
+        // Marca todos os nós que correspondem à busca
+        const matchingNodeIds = new Set();
+        allNodes.forEach(node => {
+            const itemDiv = node.querySelector('.tree-item');
+            if (itemDiv) {
+                const span = itemDiv.querySelector('span:last-child');
+                if (span) {
+                    const text = span.textContent;
+                    if (text.toLowerCase().includes(q)) {
+                        matchingNodeIds.add(node);
+                        // Destaca o texto
+                        const regex = new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+                        span.innerHTML = text.replace(regex, '<mark>$1</mark>');
+                    } else {
+                        span.innerHTML = text;
+                    }
+                }
+            }
+        });
 
-            // expande ou recolhe
-            root.querySelectorAll('.tree-children').forEach(c =>
-                c.classList.toggle('show', !!q && found)
-            );
-            root.querySelectorAll('.tree-item').forEach(i =>
-                i.classList.toggle('expanded', !!q && found)
-            );
+        // Mostra/esconde nós e expande pais de nós correspondentes
+        allNodes.forEach(node => {
+            if (matchingNodeIds.has(node)) {
+                node.style.display = '';
+                // Expande este nó
+                const childrenDiv = node.querySelector('.tree-children');
+                if (childrenDiv) {
+                    childrenDiv.classList.add('show');
+                }
+                const itemDiv = node.querySelector('.tree-item');
+                if (itemDiv) {
+                    itemDiv.classList.add('expanded');
+                }
+                
+                // Expande todos os pais
+                let parent = node.parentElement;
+                while (parent && parent !== treeView) {
+                    if (parent.classList.contains('tree-node')) {
+                        parent.style.display = '';
+                        const parentChildrenDiv = parent.querySelector('.tree-children');
+                        if (parentChildrenDiv) {
+                            parentChildrenDiv.classList.add('show');
+                        }
+                        const parentItemDiv = parent.querySelector('.tree-item');
+                        if (parentItemDiv) {
+                            parentItemDiv.classList.add('expanded');
+                        }
+                    }
+                    parent = parent.parentElement;
+                }
+            } else {
+                node.style.display = 'none';
+            }
         });
     }
 
