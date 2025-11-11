@@ -316,30 +316,82 @@ class ECUManager {
             return;
         }
 
-        // Marca todos os nós que correspondem à busca
-        const matchingNodeIds = new Set();
-        allNodes.forEach(node => {
-            const itemDiv = node.querySelector('.tree-item');
-            if (itemDiv) {
-                const span = itemDiv.querySelector('span:last-child');
-                if (span) {
-                    const text = span.textContent;
-                    if (text.toLowerCase().includes(q)) {
-                        matchingNodeIds.add(node);
-                        // Destaca o texto
-                        const regex = new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-                        span.innerHTML = text.replace(regex, '<mark>$1</mark>');
-                    } else {
-                        span.innerHTML = text;
+        // Separa a busca por "/" para pesquisa hierárquica
+        const searchTerms = q.split('/').map(term => term.trim()).filter(term => term.length > 0);
+
+        // Função para obter o caminho completo de um nó
+        const getNodePath = (node) => {
+            let path = [];
+            let current = node;
+            
+            while (current && current !== treeView) {
+                if (current.classList.contains('tree-node')) {
+                    const itemDiv = current.querySelector('.tree-item');
+                    if (itemDiv) {
+                        const span = itemDiv.querySelector('span:last-child');
+                        if (span) {
+                            path.unshift(span.textContent);
+                        }
                     }
                 }
+                current = current.parentElement;
+            }
+            return path;
+        };
+
+        // Marca todos os nós que correspondem à busca
+        const matchingNodes = new Set();
+        
+        allNodes.forEach(node => {
+            const itemDiv = node.querySelector('.tree-item');
+            if (!itemDiv) return;
+            
+            const span = itemDiv.querySelector('span:last-child');
+            if (!span) return;
+
+            const nodeText = span.textContent.toLowerCase();
+            const nodePath = getNodePath(node).map(p => p.toLowerCase());
+            
+            let isMatch = false;
+
+            if (searchTerms.length > 1) {
+                // Busca hierárquica: verifica se o caminho contém todos os termos na ordem
+                let pathIndex = 0;
+                let termIndex = 0;
+
+                while (pathIndex < nodePath.length && termIndex < searchTerms.length) {
+                    if (nodePath[pathIndex].includes(searchTerms[termIndex])) {
+                        termIndex++;
+                    }
+                    pathIndex++;
+                }
+
+                isMatch = termIndex === searchTerms.length;
+            } else {
+                // Busca simples: procura em qualquer parte do nome ou caminho
+                const fullPath = nodePath.join(' / ');
+                isMatch = fullPath.includes(q) || nodeText.includes(q);
+            }
+
+            if (isMatch) {
+                matchingNodes.add(node);
+                
+                // Destaca o texto correspondente
+                const originalText = span.textContent;
+                const highlightTerm = searchTerms[searchTerms.length - 1];
+                const regex = new RegExp(`(${highlightTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+                span.innerHTML = originalText.replace(regex, '<mark>$1</mark>');
+            } else {
+                span.innerHTML = span.textContent;
             }
         });
 
-        // Mostra/esconde nós e expande pais de nós correspondentes
+        // Mostra/esconde nós e expande pais
         allNodes.forEach(node => {
-            if (matchingNodeIds.has(node)) {
+            if (matchingNodes.has(node)) {
+                // Mostra este nó
                 node.style.display = '';
+                
                 // Expande este nó
                 const childrenDiv = node.querySelector('.tree-children');
                 if (childrenDiv) {
@@ -350,7 +402,7 @@ class ECUManager {
                     itemDiv.classList.add('expanded');
                 }
                 
-                // Expande todos os pais
+                // Expande e mostra todos os nós pais
                 let parent = node.parentElement;
                 while (parent && parent !== treeView) {
                     if (parent.classList.contains('tree-node')) {
