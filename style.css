@@ -425,6 +425,42 @@ mark {
     transform: translateY(0);
 }
 
+/* Undo / Redo buttons next to home-btn */
+.undo-btn,
+.redo-btn {
+    background: linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: var(--text-light);
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 18px;
+    transition: all 0.25s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+}
+
+.undo-btn:hover,
+.redo-btn:hover {
+    transform: translateY(-2px);
+    border-color: var(--light-red);
+    color: var(--light-red);
+    background: linear-gradient(135deg, rgba(165, 42, 42, 0.15) 0%, rgba(165, 42, 42, 0.08) 100%);
+    box-shadow: 0 4px 12px rgba(139, 0, 0, 0.3);
+}
+
+.undo-btn:disabled,
+.redo-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
 .breadcrumb-strip {
     flex: 1;
     background: linear-gradient(90deg, rgba(139, 0, 0, 0.08) 0%, rgba(139, 0, 0, 0.04) 100%);

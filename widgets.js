@@ -1,6 +1,11 @@
 class WidgetManager {
     constructor() {
         this.currentWidgets = [];
+        // Reference to the most recently created chart controller (used by header undo/redo)
+        this.latestChartController = null;
+        // Header buttons (set when rendering widgets)
+        this._undoButton = null;
+        this._redoButton = null;
     }
 
     setCurrentWidgets(widgets) {
@@ -77,6 +82,10 @@ class WidgetManager {
             e.target.value = validValue;
             valueDisplay.querySelector('.value-badge').textContent = `${validValue}${widget.unit || ''}`;
             onValueChange(widget.command, validValue);
+            // Push to global history after value change
+            if (window.globalHistoryManager) {
+                window.globalHistoryManager.push(window.globalHistoryManager.createSnapshot());
+            }
         });
 
         const rangeLabels = document.createElement('div');
@@ -122,6 +131,10 @@ class WidgetManager {
             const validValue = this.clamp(newValue, widget.min, widget.max);
             input.value = validValue;
             onValueChange(widget.command, validValue);
+            // Push to global history after value change
+            if (window.globalHistoryManager) {
+                window.globalHistoryManager.push(window.globalHistoryManager.createSnapshot());
+            }
         };
 
         btnMinus.addEventListener('click', () => {
@@ -167,6 +180,10 @@ class WidgetManager {
 
         select.addEventListener('change', (e) => {
             onValueChange(widget.command, e.target.value);
+            // Push to global history after value change
+            if (window.globalHistoryManager) {
+                window.globalHistoryManager.push(window.globalHistoryManager.createSnapshot());
+            }
         });
 
         container.appendChild(select);
@@ -190,6 +207,10 @@ class WidgetManager {
         input.addEventListener('change', (e) => {
             const value = e.target.checked ? 1 : 0;
             onValueChange(widget.command, value);
+            // Push to global history after value change
+            if (window.globalHistoryManager) {
+                window.globalHistoryManager.push(window.globalHistoryManager.createSnapshot());
+            }
         });
 
         toggleSwitch.appendChild(input);
@@ -231,6 +252,10 @@ class WidgetManager {
             input.addEventListener('change', (e) => {
                 if (e.target.checked) {
                     onValueChange(widget.command, option.value);
+                    // Push to global history after value change
+                    if (window.globalHistoryManager) {
+                        window.globalHistoryManager.push(window.globalHistoryManager.createSnapshot());
+                    }
                 }
             });
 
@@ -281,6 +306,58 @@ class WidgetManager {
             homeBtn.title = 'Voltar para a página inicial';
             homeBtn.innerHTML = '<i class="bi bi-house-fill"></i>';
 
+            // Undo / Redo buttons (to the right of the home button)
+            const undoBtn = document.createElement('button');
+            undoBtn.className = 'undo-btn';
+            undoBtn.title = 'Desfazer (Ctrl+Z)';
+            undoBtn.innerHTML = '<i class="bi bi-arrow-counterclockwise"></i>';
+            undoBtn.disabled = true;
+
+            const redoBtn = document.createElement('button');
+            redoBtn.className = 'redo-btn';
+            redoBtn.title = 'Refazer (Ctrl+Y)';
+            redoBtn.innerHTML = '<i class="bi bi-arrow-clockwise"></i>';
+            redoBtn.disabled = true;
+
+            // Store references for later updates by the chart controller
+            this._undoButton = undoBtn;
+            this._redoButton = redoBtn;
+
+            // Wire the buttons to call the latest chart controller when clicked
+            undoBtn.addEventListener('click', () => {
+                if (window.globalHistoryManager) {
+                    const success = window.globalHistoryManager.undo();
+                    if (success && window.notificationManager) {
+                        window.notificationManager.info('Desfazer: última alteração revertida');
+                    } else if (!success && window.notificationManager) {
+                        window.notificationManager.warning('Nenhuma alteração anterior para desfazer');
+                    }
+                } else {
+                    if (window.notificationManager) {
+                        window.notificationManager.warning('Gerenciador de histórico não disponível');
+                    }
+                }
+            });
+            redoBtn.addEventListener('click', () => {
+                if (window.globalHistoryManager) {
+                    const success = window.globalHistoryManager.redo();
+                    if (success && window.notificationManager) {
+                        window.notificationManager.info('Refazer: alteração reaplicada');
+                    } else if (!success && window.notificationManager) {
+                        window.notificationManager.warning('Nenhuma alteração subsequente para refazer');
+                    }
+                } else {
+                    if (window.notificationManager) {
+                        window.notificationManager.warning('Gerenciador de histórico não disponível');
+                    }
+                }
+            });
+
+            // Register buttons with global history manager
+            if (window.globalHistoryManager) {
+                window.globalHistoryManager.setButtons(undoBtn, redoBtn);
+            }
+
             const headerStrip = document.createElement('div');
             headerStrip.className = 'breadcrumb-strip';
 
@@ -315,6 +392,8 @@ class WidgetManager {
             headerStrip.appendChild(breadcrumb);
 
             headerRow.appendChild(homeBtn);
+            headerRow.appendChild(undoBtn);
+            headerRow.appendChild(redoBtn);
             headerRow.appendChild(headerStrip);
 
             widgetsArea.appendChild(headerRow);
@@ -433,6 +512,9 @@ class WidgetManager {
         let isDragging = false;
         let tooltipDiv = null;
         const hitRadius = 20; // Aumenta a área de captura dos pontos
+
+        // Reference to history manager for this chart
+        const manager = this;
         
         const showValueTooltip = (x, y, xVal, yVal) => {
             if (!tooltipDiv) {
@@ -598,6 +680,10 @@ class WidgetManager {
                     // Shift+Click para editar coordenadas
                     if (e.shiftKey) {
                         e.preventDefault();
+                        // Push current state to global history so undo can revert this edit
+                        if (window.globalHistoryManager) {
+                            window.globalHistoryManager.push(window.globalHistoryManager.createSnapshot());
+                        }
                         (async () => {
                             const result = await window.dialogManager.editPointCoordinates(
                                 point,
@@ -616,6 +702,10 @@ class WidgetManager {
                             }
                         })();
                     } else {
+                        // Push current state to global history so undo can revert this drag operation
+                        if (window.globalHistoryManager) {
+                            window.globalHistoryManager.push(window.globalHistoryManager.createSnapshot());
+                        }
                         draggingPoint = idx;
                         isDragging = true;
                         pointFound = true;
@@ -676,6 +766,10 @@ class WidgetManager {
                 hideValueTooltip();
                 isDragging = false;
                 draggingPoint = null;
+                // Push final state after drag completes
+                if (window.globalHistoryManager) {
+                    window.globalHistoryManager.push(window.globalHistoryManager.createSnapshot());
+                }
             }
         });
 
