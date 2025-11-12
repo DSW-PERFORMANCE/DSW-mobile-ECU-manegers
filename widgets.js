@@ -574,9 +574,14 @@ class WidgetManager {
 
         // ---- Interação ----
         canvas.addEventListener('mousedown', (e) => {
+            // Map client (CSS) coordinates into canvas internal coordinates to account for any
+            // differences between the canvas element size and its drawing buffer. This fixes
+            // imprecision when the canvas is resized or on high-DPI displays.
             const rect = canvas.getBoundingClientRect();
-            const mouseX = e.clientX - rect.left;
-            const mouseY = e.clientY - rect.top;
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const mouseX = (e.clientX - rect.left) * scaleX;
+            const mouseY = (e.clientY - rect.top) * scaleY;
 
             const padding = 60;
             const chartWidth = canvas.width - padding * 2;
@@ -621,9 +626,12 @@ class WidgetManager {
         });
 
         canvas.addEventListener('mousemove', (e) => {
+            // Map client coords into canvas internal coords
             const rect = canvas.getBoundingClientRect();
-            const mouseX = e.clientX - rect.left;
-            const mouseY = e.clientY - rect.top;
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const mouseX = (e.clientX - rect.left) * scaleX;
+            const mouseY = (e.clientY - rect.top) * scaleY;
 
             const padding = 60;
             const chartWidth = canvas.width - padding * 2;
@@ -650,6 +658,7 @@ class WidgetManager {
             }
 
             if (isDragging && draggingPoint !== null) {
+                // Use the mapped mouse coordinates for calculations
                 const newX = xMin + ((mouseX - padding) / chartWidth) * (xMax - xMin);
                 const newY = yMin + ((canvas.height - padding - mouseY) / chartHeight) * (yMax - yMin);
 
