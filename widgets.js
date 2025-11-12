@@ -695,10 +695,6 @@ class WidgetManager {
                     // Shift+Click para editar coordenadas
                     if (e.shiftKey) {
                         e.preventDefault();
-                        // Push current state to global history so undo can revert this edit
-                        if (window.globalHistoryManager) {
-                            window.globalHistoryManager.push(window.globalHistoryManager.createSnapshot());
-                        }
                         (async () => {
                             const result = await window.dialogManager.editPointCoordinates(
                                 point,
@@ -717,10 +713,6 @@ class WidgetManager {
                             }
                         })();
                     } else {
-                        // Push current state to global history so undo can revert this drag operation
-                        if (window.globalHistoryManager) {
-                            window.globalHistoryManager.push(window.globalHistoryManager.createSnapshot());
-                        }
                         draggingPoint = idx;
                         isDragging = true;
                         pointFound = true;
