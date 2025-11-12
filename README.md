@@ -160,5 +160,3 @@ const resultado = await window.dialogManager.promptValues('Editar parâmetros', 
 - O sistema de diálogos pode ser expandido para novos tipos conforme necessidade.
 - Todos os widgets são integrados ao histórico global e ao sistema de modificação/salvo.
 
----
-Se precisar de exemplos de uso dos diálogos ou integração de novos widgets, consulte o código dos arquivos ou peça exemplos específicos.
