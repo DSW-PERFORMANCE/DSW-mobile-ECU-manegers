@@ -34,7 +34,16 @@ class ECUManager {
 
     setupEventListeners() {
         document.getElementById('saveBtn').addEventListener('click', () => this.saveCurrentScreen());
-        document.getElementById('reloadBtn').addEventListener('click', () => this.reloadCurrentScreen());
+        document.getElementById('reloadBtn').addEventListener('click', async () => {
+            if (this.screenModified) {
+                const shouldContinue = await window.dialogManager.confirm(
+                    'Alterações não salvas',
+                    'Existem alterações não salvas. Deseja recarregar sem salvar?'
+                );
+                if (!shouldContinue) return;
+            }
+            this.reloadCurrentScreen();
+        });
         document.getElementById('searchInput').addEventListener('input', (e) => this.searchTree(e.target.value));
 
         setTimeout(() => this.setupHomeButton(), 100);
