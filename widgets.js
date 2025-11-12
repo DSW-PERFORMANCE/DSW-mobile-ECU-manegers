@@ -77,14 +77,29 @@ class WidgetManager {
             <div class="value-badge">${currentValue}${widget.unit || ''}</div>
         `;
 
+        let sliderChangeInProgress = false;
+
         slider.addEventListener('input', (e) => {
             const validValue = this.clamp(parseFloat(e.target.value), widget.min, widget.max);
             e.target.value = validValue;
             valueDisplay.querySelector('.value-badge').textContent = `${validValue}${widget.unit || ''}`;
             onValueChange(widget.command, validValue);
-            // Push to global history after value change
-            if (window.globalHistoryManager) {
+            sliderChangeInProgress = true;
+        });
+
+        slider.addEventListener('mouseup', () => {
+            // Only push to history when slider drag ends
+            if (sliderChangeInProgress && window.globalHistoryManager) {
                 window.globalHistoryManager.push(window.globalHistoryManager.createSnapshot());
+                sliderChangeInProgress = false;
+            }
+        });
+
+        slider.addEventListener('touchend', () => {
+            // Also handle touch devices
+            if (sliderChangeInProgress && window.globalHistoryManager) {
+                window.globalHistoryManager.push(window.globalHistoryManager.createSnapshot());
+                sliderChangeInProgress = false;
             }
         });
 

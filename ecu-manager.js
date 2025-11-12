@@ -130,6 +130,12 @@ class ECUManager {
         this.modifiedWidgets.clear();
         this.screenModified = false;
         this.savedValues = { ...this.currentValues };
+        
+        // Clear history when switching to a new tab/node
+        if (window.globalHistoryManager) {
+            window.globalHistoryManager.clear();
+        }
+        
         this.updateBreadcrumb();
         this.renderWidgets(widgets, breadcrumb);
 
@@ -165,6 +171,12 @@ class ECUManager {
                     }
                 });
             });
+
+            // After loading values, reset history to a clean slate with current state as base
+            if (window.globalHistoryManager) {
+                window.globalHistoryManager.clear();
+                window.globalHistoryManager.push(window.globalHistoryManager.createSnapshot());
+            }
         }, 50);
     }
 
