@@ -275,6 +275,45 @@
                 "green": "sport"
               },
               "toggleOnRelease": false
+            },
+            {
+              "type": "checkbox_group",
+              "title": "Configurações de Diagnóstico",
+              "description": "Marque as opções desejadas",
+              "checkboxes": [
+                {
+                  "label": "Ativar Log de Dados",
+                  "command": "diag_enable_logging",
+                  "icon": "bi-file-earmark-text",
+                  "help": "Registra todos os parâmetros do sistema",
+                  "valueOn": 1,
+                  "valueOff": 0
+                },
+                {
+                  "label": "Monitorar Sensores",
+                  "command": "diag_monitor_sensors",
+                  "icon": "bi-graph-up",
+                  "help": "Monitora leitura em tempo real",
+                  "valueOn": 1,
+                  "valueOff": 0
+                },
+                {
+                  "label": "Detectar Falhas",
+                  "command": "diag_fault_detection",
+                  "icon": "bi-exclamation-circle",
+                  "help": "Ativa detecção automática de falhas",
+                  "valueOn": 1,
+                  "valueOff": 0
+                },
+                {
+                  "label": "Modo Debug",
+                  "command": "diag_debug_mode",
+                  "icon": "bi-bug",
+                  "help": "Modo de depuração avançado",
+                  "valueOn": 1,
+                  "valueOff": 0
+                }
+              ]
             }
           ]
         }

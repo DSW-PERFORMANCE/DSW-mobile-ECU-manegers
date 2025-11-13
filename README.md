@@ -22,7 +22,7 @@ Fluxo de inicialização:
 
 ## Principais Funcionalidades
 
-- **Widgets Interativos**: Slider, spinbox, combobox, toggle, radio, botão, action buttons, color toggle, gráfico 2D.
+- **Widgets Interativos**: Slider, spinbox, combobox, toggle, radio, botão, action buttons, color toggle, checkbox group, gráfico 2D.
 - **Gráfico 2D**: Arraste pontos, Shift+Clique para editar, interpolação, reset, tooltip dinâmico.
 - **Histórico Global (Undo/Redo)**: Botões e atalhos (Ctrl+Z / Ctrl+Y) para desfazer/refazer alterações em qualquer widget.
 - **Color Toggle**: Widget especial que alterna cores e envia comando direto (sem histórico, sem alterar valores).
@@ -54,10 +54,11 @@ Define cores, layout, responsividade, estilos dos widgets, gráficos, diálogos,
 - Funções principais: `init`, `loadConfig`, `renderTree`, `switchToNode`, `saveCurrentScreen`, `reloadCurrentScreen`, `searchTree`, `goHome`.
 
 ### widgets.js
-- Cria e gerencia widgets: `createSlider`, `createSpinbox`, `createCombobox`, `createToggle`, `createRadio`, `createButton`, `createActionButtons`, `createColorToggle`, `createChart2D`.
+- Cria e gerencia widgets: `createSlider`, `createSpinbox`, `createCombobox`, `createToggle`, `createRadio`, `createButton`, `createActionButtons`, `createColorToggle`, `createCheckboxGroup`, `createChart2D`.
 - Integra cada widget ao histórico global e ao sistema de modificação/salvo.
 - Função `renderWidgets` monta todos os widgets da tela.
 - **Color Toggle**: Widget especial que NÃO entra no histórico, envia comando direto à ECU.
+- **Checkbox Group**: Frame com múltiplas checkboxes independentes, cada uma com seu comando e valores customizáveis.
 
 ### dialogs.js
 Sistema central de diálogos:
@@ -226,6 +227,51 @@ const resultado = await window.dialogManager.promptValues('Editar parâmetros', 
 - `valueMap`: Objeto que mapeia cores para valores (opcional)
 - `toggleOnRelease`: Se `true`, muda cor novamente ao soltar (padrão: `false`)
 
+### Exemplo de Widget Checkbox Group
+```js
+// Frame com múltiplas checkboxes, cada uma com seu comando
+{
+  type: 'checkbox_group',
+  title: 'Configurações de Diagnóstico',
+  description: 'Marque as opções desejadas',
+  checkboxes: [
+    {
+      label: 'Ativar Log de Dados',
+      command: 'diag_enable_logging',
+      icon: 'bi-file-earmark-text',
+      help: 'Registra todos os parâmetros',
+      valueOn: 1,
+      valueOff: 0
+    },
+    {
+      label: 'Monitorar Sensores',
+      command: 'diag_monitor_sensors',
+      icon: 'bi-graph-up',
+      help: 'Monitora leitura em tempo real',
+      valueOn: 1,
+      valueOff: 0
+    }
+  ]
+}
+```
+
+**Características do Checkbox Group**:
+- ✅ **Frame visual**: Engloba múltiplas checkboxes
+- ✅ **Comandos independentes**: Cada checkbox tem seu próprio comando
+- ✅ **Valores customizáveis**: `valueOn` e `valueOff` podem ser qualquer valor
+- ✅ **Ícones opcionais**: Cada checkbox pode ter um ícone
+- ✅ **Help text**: Descrição debaixo de cada opção
+- ✅ **Histórico integrado**: Entra em undo/redo
+- ✅ **Múltiplas seleções**: Pode marcar várias ao mesmo tempo
+
+**Propriedades por Checkbox**:
+- `label`: Texto exibido
+- `command`: Comando enviado ao ECU
+- `icon`: Ícone (Bootstrap Icons) - opcional
+- `help`: Texto de ajuda debaixo - opcional
+- `valueOn`: Valor enviado quando marcada (padrão: 1)
+- `valueOff`: Valor enviado quando desmarcada (padrão: 0)
+
 ## Atalhos e Comportamentos
 - **Ctrl+Z**: Desfazer última alteração
 - **Ctrl+Y**: Refazer alteração desfeita
@@ -234,6 +280,7 @@ const resultado = await window.dialogManager.promptValues('Editar parâmetros', 
 - **Busca**: Use `/` para busca hierárquica (ex: `Ignição / Bobinas`)
 - **Gráfico 2D**: Arraste pontos, Shift+Clique para editar, interpolação, reset, tooltip dinâmico
 - **Color Toggle**: Clique para alternar cores, envia comando direto (sem histórico)
+- **Checkbox Group**: Marque múltiplas opções, cada uma com seu comando
 - **Diálogos**: Ícones customizáveis, múltiplos campos, validação, pausa/carregando
 
 ## Observações
@@ -241,4 +288,5 @@ const resultado = await window.dialogManager.promptValues('Editar parâmetros', 
 - O histórico é sempre zerado ao trocar de aba ou recarregar valores.
 - O sistema de diálogos pode ser expandido para novos tipos conforme necessidade.
 - Todos os widgets são integrados ao histórico global e ao sistema de modificação/salvo.
+- **Toggle widget**: Corrigido - agora apenas marca como modificado se o valor realmente mudou.
 

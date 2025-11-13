@@ -52,6 +52,8 @@ class WidgetManager {
                 return this.createActionButtons(widget, onValueChange);
             case 'color_toggle':
                 return this.createColorToggle(widget, onValueChange);
+            case 'checkbox_group':
+                return this.createCheckboxGroup(widget, currentValue, onValueChange);
             case 'chart2d':
                 return this.createChart2D(widget, currentValue, onValueChange);
             default:
@@ -520,6 +522,82 @@ class WidgetManager {
         }
 
         container.appendChild(toggleButton);
+        return container;
+    }
+
+    createCheckboxGroup(widget, currentValue, onValueChange) {
+        const container = document.createElement('div');
+        container.className = 'widget-checkbox-group';
+
+        // Frame com as checkboxes
+        const checkboxesFrame = document.createElement('div');
+        checkboxesFrame.className = 'checkbox-group-frame';
+
+        // Itera sobre as checkboxes configuradas
+        if (widget.checkboxes && Array.isArray(widget.checkboxes)) {
+            widget.checkboxes.forEach(checkboxConfig => {
+                const checkboxItem = document.createElement('div');
+                checkboxItem.className = 'checkbox-item';
+
+                const label = document.createElement('label');
+                label.className = 'checkbox-label';
+
+                const input = document.createElement('input');
+                input.type = 'checkbox';
+                input.className = 'checkbox-input';
+
+                // Obtém o valor salvo (padrão: off)
+                const valueOff = checkboxConfig.valueOff !== undefined ? checkboxConfig.valueOff : 0;
+                const valueOn = checkboxConfig.valueOn !== undefined ? checkboxConfig.valueOn : 1;
+                const savedValue = currentValue && currentValue[checkboxConfig.command];
+                
+                // Define se está checked
+                input.checked = savedValue === valueOn;
+
+                // Listener para mudança
+                input.addEventListener('change', (e) => {
+                    const newValue = e.target.checked ? valueOn : valueOff;
+                    onValueChange(checkboxConfig.command, newValue);
+                    
+                    // Push to global history
+                    if (window.globalHistoryManager) {
+                        window.globalHistoryManager.push(window.globalHistoryManager.createSnapshot());
+                    }
+                });
+
+                // Ícone (se houver)
+                if (checkboxConfig.icon) {
+                    const icon = document.createElement('i');
+                    icon.className = `checkbox-icon ${checkboxConfig.icon}`;
+                    label.appendChild(icon);
+                }
+
+                // Checkbox visual
+                const checkboxVisual = document.createElement('span');
+                checkboxVisual.className = 'checkbox-visual';
+                label.appendChild(input);
+                label.appendChild(checkboxVisual);
+
+                // Texto da checkbox
+                const text = document.createElement('span');
+                text.className = 'checkbox-text';
+                text.textContent = checkboxConfig.label || 'Opção';
+                label.appendChild(text);
+
+                // Help text (se houver)
+                if (checkboxConfig.help) {
+                    const help = document.createElement('div');
+                    help.className = 'checkbox-help';
+                    help.textContent = checkboxConfig.help;
+                    checkboxItem.appendChild(help);
+                }
+
+                checkboxItem.appendChild(label);
+                checkboxesFrame.appendChild(checkboxItem);
+            });
+        }
+
+        container.appendChild(checkboxesFrame);
         return container;
     }
 
