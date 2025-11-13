@@ -48,6 +48,10 @@ class WidgetManager {
                 return this.createRadio(widget, currentValue, onValueChange);
             case 'button':
                 return this.createButton(widget, onValueChange);
+            case 'action_buttons':
+                return this.createActionButtons(widget, onValueChange);
+            case 'color_toggle':
+                return this.createColorToggle(widget, onValueChange);
             case 'chart2d':
                 return this.createChart2D(widget, currentValue, onValueChange);
             default:
@@ -305,6 +309,217 @@ class WidgetManager {
         });
 
         container.appendChild(button);
+        return container;
+    }
+
+    createActionButtons(widget, onValueChange) {
+        const container = document.createElement('div');
+        container.className = 'widget-action-buttons';
+
+        // Se houver descrição, mostra antes dos botões
+        if (widget.description) {
+            const description = document.createElement('div');
+            description.style.cssText = 'font-size: 14px; color: #999; margin-bottom: 10px;';
+            description.textContent = widget.description;
+            container.appendChild(description);
+        }
+
+        const buttonsContainer = document.createElement('div');
+        buttonsContainer.className = 'action-buttons-container';
+
+        // Itera sobre os botões configurados
+        if (widget.buttons && Array.isArray(widget.buttons)) {
+            widget.buttons.forEach(buttonConfig => {
+                const button = document.createElement('button');
+                button.className = 'action-button';
+
+                // Adiciona cor (padrão: red)
+                const color = buttonConfig.color || 'red';
+                button.classList.add(`color-${color}`);
+
+                // Adiciona ícone se existir
+                if (buttonConfig.icon) {
+                    const icon = document.createElement('i');
+                    icon.className = buttonConfig.icon;
+                    button.appendChild(icon);
+                }
+
+                // Adiciona texto do botão
+                const text = document.createElement('span');
+                text.textContent = buttonConfig.label || 'Botão';
+                button.appendChild(text);
+
+                // Modo do botão: 'press_release' (padrão) ou 'toggle'
+                const mode = buttonConfig.mode || 'press_release';
+                let toggleState = false; // Estado para modo toggle
+
+                // Função para enviar comando imediatamente (sem valor de soltar)
+                const sendCommandImmediate = (command) => {
+                    if (command && window.ecuCommunication) {
+                        console.log(`[ACTION BUTTON] Enviando: ${command}`);
+                        window.ecuCommunication.sendCommand(command, 1);
+                    }
+                };
+
+                if (mode === 'press_release') {
+                    // Modo padrão: press ao apertar, release ao soltar
+                    button.addEventListener('mousedown', () => {
+                        sendCommandImmediate(buttonConfig.commandPress);
+                    });
+
+                    button.addEventListener('mouseup', () => {
+                        sendCommandImmediate(buttonConfig.commandRelease);
+                    });
+
+                    button.addEventListener('mouseout', () => {
+                        sendCommandImmediate(buttonConfig.commandRelease);
+                    });
+
+                    // Touch events para mobile
+                    button.addEventListener('touchstart', () => {
+                        sendCommandImmediate(buttonConfig.commandPress);
+                    });
+
+                    button.addEventListener('touchend', () => {
+                        sendCommandImmediate(buttonConfig.commandRelease);
+                    });
+
+                } else if (mode === 'toggle') {
+                    // Modo toggle: cada clique alterna entre press e release
+                    button.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        
+                        if (!toggleState) {
+                            // Estado OFF → ON (envia press)
+                            sendCommandImmediate(buttonConfig.commandPress);
+                            button.classList.add('active');
+                            toggleState = true;
+                        } else {
+                            // Estado ON → OFF (envia release)
+                            sendCommandImmediate(buttonConfig.commandRelease);
+                            button.classList.remove('active');
+                            toggleState = false;
+                        }
+                    });
+                }
+
+                buttonsContainer.appendChild(button);
+            });
+        }
+
+        container.appendChild(buttonsContainer);
+        return container;
+    }
+
+    createColorToggle(widget, onValueChange) {
+        const container = document.createElement('div');
+        container.className = 'widget-color-toggle';
+
+        // Estado interno do toggle (índice da cor atual)
+        let currentColorIndex = 0;
+        const colors = widget.colors || ['red', 'blue', 'green', 'yellow', 'purple', 'orange'];
+        
+        // Se houver descrição, mostra antes do botão
+        if (widget.description) {
+            const description = document.createElement('div');
+            description.style.cssText = 'font-size: 14px; color: #999; margin-bottom: 10px;';
+            description.textContent = widget.description;
+            container.appendChild(description);
+        }
+
+        const toggleButton = document.createElement('button');
+        toggleButton.className = 'color-toggle-button';
+        toggleButton.setAttribute('data-color-index', '0');
+
+        // Define a cor inicial
+        const initialColor = colors[0];
+        toggleButton.classList.add(`color-${initialColor}`);
+
+        // Ícone
+        if (widget.icon) {
+            const icon = document.createElement('i');
+            icon.className = widget.icon;
+            toggleButton.appendChild(icon);
+        }
+
+        // Texto
+        const text = document.createElement('span');
+        text.textContent = widget.label || 'Toggle';
+        toggleButton.appendChild(text);
+
+        // Função para enviar comando direto (SEM histórico)
+        const sendCommand = (colorValue) => {
+            // Envia APENAS o comando + valor, sem alterar widgets
+            // Simula envio direto para ECU (bypass do histórico)
+            if (window.ecuCommunication) {
+                console.log(`[COLOR TOGGLE] Enviando direto: ${widget.command}=${colorValue}`);
+                window.ecuCommunication.sendCommand(widget.command, colorValue);
+            }
+            
+            // Notificação visual
+            if (window.notificationManager) {
+                window.notificationManager.info(`${widget.label}: ${colorValue}`);
+            }
+        };
+
+        // Event listener para mudar cor ao apertar
+        toggleButton.addEventListener('mousedown', () => {
+            currentColorIndex = (currentColorIndex + 1) % colors.length;
+            const newColor = colors[currentColorIndex];
+            
+            // Remove classe de cor antiga e adiciona nova
+            colors.forEach(color => toggleButton.classList.remove(`color-${color}`));
+            toggleButton.classList.add(`color-${newColor}`);
+            toggleButton.setAttribute('data-color-index', currentColorIndex);
+
+            // Envia comando com valor de cor
+            const colorValue = widget.valueMap ? widget.valueMap[newColor] : newColor;
+            sendCommand(colorValue);
+        });
+
+        // Opcional: Event listener para mudar cor novamente ao soltar (se configurado)
+        if (widget.toggleOnRelease) {
+            toggleButton.addEventListener('mouseup', () => {
+                currentColorIndex = (currentColorIndex + 1) % colors.length;
+                const newColor = colors[currentColorIndex];
+                
+                colors.forEach(color => toggleButton.classList.remove(`color-${color}`));
+                toggleButton.classList.add(`color-${newColor}`);
+                toggleButton.setAttribute('data-color-index', currentColorIndex);
+
+                const colorValue = widget.valueMap ? widget.valueMap[newColor] : newColor;
+                sendCommand(colorValue);
+            });
+        }
+
+        // Touch events para mobile
+        toggleButton.addEventListener('touchstart', () => {
+            currentColorIndex = (currentColorIndex + 1) % colors.length;
+            const newColor = colors[currentColorIndex];
+            
+            colors.forEach(color => toggleButton.classList.remove(`color-${color}`));
+            toggleButton.classList.add(`color-${newColor}`);
+            toggleButton.setAttribute('data-color-index', currentColorIndex);
+
+            const colorValue = widget.valueMap ? widget.valueMap[newColor] : newColor;
+            sendCommand(colorValue);
+        });
+
+        if (widget.toggleOnRelease) {
+            toggleButton.addEventListener('touchend', () => {
+                currentColorIndex = (currentColorIndex + 1) % colors.length;
+                const newColor = colors[currentColorIndex];
+                
+                colors.forEach(color => toggleButton.classList.remove(`color-${color}`));
+                toggleButton.classList.add(`color-${newColor}`);
+                toggleButton.setAttribute('data-color-index', currentColorIndex);
+
+                const colorValue = widget.valueMap ? widget.valueMap[newColor] : newColor;
+                sendCommand(colorValue);
+            });
+        }
+
+        container.appendChild(toggleButton);
         return container;
     }
 

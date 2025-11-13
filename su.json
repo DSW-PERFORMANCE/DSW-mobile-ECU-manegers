@@ -229,6 +229,52 @@
               "help": "Liga ou desliga o limitador de RPM",
               "command": "rpm_limiter_enable",
               "default": true
+            },
+            {
+              "type": "action_buttons",
+              "title": "Controle de Teste",
+              "description": "Botões de teste com press/release",
+              "buttons": [
+                {
+                  "label": "Teste 1 (Press/Release)",
+                  "icon": "bi-power",
+                  "color": "red",
+                  "mode": "press_release",
+                  "commandPress": "test_btn_1_press",
+                  "commandRelease": "test_btn_1_release"
+                },
+                {
+                  "label": "Teste 2 (Toggle)",
+                  "icon": "bi-play-fill",
+                  "color": "green",
+                  "mode": "toggle",
+                  "commandPress": "test_btn_2_on",
+                  "commandRelease": "test_btn_2_off"
+                },
+                {
+                  "label": "Teste 3 (Toggle)",
+                  "icon": "bi-stop-fill",
+                  "color": "orange",
+                  "mode": "toggle",
+                  "commandPress": "test_btn_3_on",
+                  "commandRelease": "test_btn_3_off"
+                }
+              ]
+            },
+            {
+              "type": "color_toggle",
+              "title": "Modo de Energia",
+              "description": "Clique para alternar o modo de energia",
+              "command": "energy_mode",
+              "icon": "bi-lightning-charge",
+              "label": "Energia",
+              "colors": ["red", "blue", "green"],
+              "valueMap": {
+                "red": "eco",
+                "blue": "normal",
+                "green": "sport"
+              },
+              "toggleOnRelease": false
             }
           ]
         }

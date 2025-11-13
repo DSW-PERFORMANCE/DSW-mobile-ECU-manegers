@@ -22,9 +22,10 @@ Fluxo de inicialização:
 
 ## Principais Funcionalidades
 
-- **Widgets Interativos**: Slider, spinbox, combobox, toggle, radio, botão, gráfico 2D.
+- **Widgets Interativos**: Slider, spinbox, combobox, toggle, radio, botão, action buttons, color toggle, gráfico 2D.
 - **Gráfico 2D**: Arraste pontos, Shift+Clique para editar, interpolação, reset, tooltip dinâmico.
 - **Histórico Global (Undo/Redo)**: Botões e atalhos (Ctrl+Z / Ctrl+Y) para desfazer/refazer alterações em qualquer widget.
+- **Color Toggle**: Widget especial que alterna cores e envia comando direto (sem histórico, sem alterar valores).
 - **Busca Hierárquica**: Pesquisa por nome ou caminho usando `/`.
 - **Breadcrumbs e Status**: Caminho atual, status de modificação/salvo, botão de copiar, indicadores visuais.
 - **Diálogos Customizados**: Confirmação, alerta, informação, pausa/carregando, edição de valores (ícones, múltiplos campos, validação).
@@ -53,9 +54,10 @@ Define cores, layout, responsividade, estilos dos widgets, gráficos, diálogos,
 - Funções principais: `init`, `loadConfig`, `renderTree`, `switchToNode`, `saveCurrentScreen`, `reloadCurrentScreen`, `searchTree`, `goHome`.
 
 ### widgets.js
-- Cria e gerencia widgets: `createSlider`, `createSpinbox`, `createCombobox`, `createToggle`, `createRadio`, `createButton`, `createChart2D`.
+- Cria e gerencia widgets: `createSlider`, `createSpinbox`, `createCombobox`, `createToggle`, `createRadio`, `createButton`, `createActionButtons`, `createColorToggle`, `createChart2D`.
 - Integra cada widget ao histórico global e ao sistema de modificação/salvo.
 - Função `renderWidgets` monta todos os widgets da tela.
+- **Color Toggle**: Widget especial que NÃO entra no histórico, envia comando direto à ECU.
 
 ### dialogs.js
 Sistema central de diálogos:
@@ -146,6 +148,84 @@ const resultado = await window.dialogManager.promptValues('Editar parâmetros', 
 }
 ```
 
+### Exemplo de Widget Action Buttons
+```js
+// Widget com múltiplos botões de ação
+{
+  type: 'action_buttons',
+  title: 'Controle de Teste',
+  description: 'Botões com diferentes modos',
+  buttons: [
+    {
+      label: 'Teste 1 (Press/Release)',
+      icon: 'bi-power',
+      color: 'red',
+      mode: 'press_release',  // Apertar: press, Soltar: release
+      commandPress: 'test_btn_1_press',
+      commandRelease: 'test_btn_1_release'
+    },
+    {
+      label: 'Teste 2 (Toggle)',
+      icon: 'bi-play-fill',
+      color: 'green',
+      mode: 'toggle',  // 1º clique: press, 2º clique: release
+      commandPress: 'test_btn_2_on',
+      commandRelease: 'test_btn_2_off'
+    }
+  ]
+}
+```
+
+**Modos disponíveis**:
+- `press_release` (padrão): Envia `commandPress` ao apertar, `commandRelease` ao soltar
+- `toggle`: Envia `commandPress` no 1º clique, `commandRelease` no 2º clique (alterna visualmente)
+
+**Propriedades por botão**:
+- `label`: Texto exibido no botão
+- `icon`: Ícone Bootstrap Icons (ex: `bi-power`, `bi-play-fill`)
+- `color`: Cor do botão (padrão: `red`) - red, blue, green, yellow, purple, orange
+- `mode`: Modo de operação (padrão: `press_release`) - `press_release` ou `toggle`
+- `commandPress`: Comando enviado ao apertar/primeira vez
+- `commandRelease`: Comando enviado ao soltar/segunda vez
+- **Sem valores**: Nenhum botão envia valores, apenas comandos
+
+### Exemplo de Widget Color Toggle
+```js
+// Widget que alterna cores ao clicar (envia comando direto, SEM histórico)
+{
+  type: 'color_toggle',
+  title: 'Modo de Energia',
+  description: 'Clique para alternar o modo de energia',
+  command: 'energy_mode',
+  icon: 'bi-lightning-charge',
+  label: 'Energia',
+  colors: ['red', 'blue', 'green'],  // Ciclo de cores ao clicar
+  valueMap: {
+    red: 'eco',
+    blue: 'normal',
+    green: 'sport'
+  },
+  toggleOnRelease: false  // Se true, muda cor ao soltar também
+}
+```
+
+**Características do Color Toggle**:
+- ✅ **Envia comando direto** à ECU (sem passar por histórico)
+- ✅ **Alternância de cores**: Cicla entre cores configuradas a cada clique
+- ✅ **Sem alterar valores**: Não modifica valores de outros widgets
+- ✅ **NÃO registra em histórico**: Ações de toggle não entram em undo/redo
+- ✅ **Notificação instantânea**: Mostra feedback visual ao clicar
+- ✅ **Opcional**: `valueMap` permite mapear cores para valores específicos
+- ✅ **Toggle duplo**: `toggleOnRelease` permite mudar cor novamente ao soltar
+
+**Propriedades**:
+- `command`: Comando enviado ao ECU
+- `icon`: Ícone do botão
+- `label`: Texto exibido
+- `colors`: Array de cores para ciclar (padrão: todas as cores)
+- `valueMap`: Objeto que mapeia cores para valores (opcional)
+- `toggleOnRelease`: Se `true`, muda cor novamente ao soltar (padrão: `false`)
+
 ## Atalhos e Comportamentos
 - **Ctrl+Z**: Desfazer última alteração
 - **Ctrl+Y**: Refazer alteração desfeita
@@ -153,9 +233,11 @@ const resultado = await window.dialogManager.promptValues('Editar parâmetros', 
 - **Botão de voltar (home)**: Pede confirmação se houver alterações não salvas
 - **Busca**: Use `/` para busca hierárquica (ex: `Ignição / Bobinas`)
 - **Gráfico 2D**: Arraste pontos, Shift+Clique para editar, interpolação, reset, tooltip dinâmico
+- **Color Toggle**: Clique para alternar cores, envia comando direto (sem histórico)
 - **Diálogos**: Ícones customizáveis, múltiplos campos, validação, pausa/carregando
 
 ## Observações
+
 - O histórico é sempre zerado ao trocar de aba ou recarregar valores.
 - O sistema de diálogos pode ser expandido para novos tipos conforme necessidade.
 - Todos os widgets são integrados ao histórico global e ao sistema de modificação/salvo.
