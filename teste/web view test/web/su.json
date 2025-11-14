@@ -38,6 +38,16 @@
               "command": "bank_a_enable",
               "default": true
             }
+            ,
+            {
+              "type": "linked_radio",
+              "title": "Modo Mono (Vinculado)",
+              "help": "Opção 'Mono' do grupo vinculado inj_mode_group",
+              "command": "injection_mode",
+              "group": "inj_mode_group",
+              "value": "mono",
+              "default": "mono"
+            }
           ]
         },
         {
@@ -96,6 +106,16 @@
               "max": 40,
               "default": 15,
               "unit": "°"
+            }
+            ,
+            {
+              "type": "linked_radio",
+              "title": "Modo Direct (Vinculado)",
+              "help": "Opção 'Direct' do grupo vinculado inj_mode_group",
+              "command": "injection_mode",
+              "group": "inj_mode_group",
+              "value": "direct",
+              "default": "mono"
             }
           ]
         },
@@ -229,6 +249,101 @@
               "help": "Liga ou desliga o limitador de RPM",
               "command": "rpm_limiter_enable",
               "default": true
+            },
+            {
+              "type": "action_buttons",
+              "title": "Controle de Teste",
+              "description": "Botões de teste com press/release",
+              "buttons": [
+                {
+                  "label": "Teste 1 (Press/Release)",
+                  "icon": "bi-power",
+                  "color": "red",
+                  "mode": "press_release",
+                  "commandPress": "test_btn_1_press",
+                  "commandRelease": "test_btn_1_release"
+                },
+                {
+                  "label": "Teste 2 (Toggle)",
+                  "icon": "bi-play-fill",
+                  "color": "green",
+                  "mode": "toggle",
+                  "commandPress": "test_btn_2_on",
+                  "commandRelease": "test_btn_2_off"
+                },
+                {
+                  "label": "Teste 3 (Toggle)",
+                  "icon": "bi-stop-fill",
+                  "color": "orange",
+                  "mode": "toggle",
+                  "commandPress": "test_btn_3_on",
+                  "commandRelease": "test_btn_3_off"
+                }
+              ]
+            },
+            {
+              "type": "color_toggle",
+              "title": "Modo de Energia",
+              "description": "Clique para alternar o modo de energia",
+              "command": "energy_mode",
+              "icon": "bi-lightning-charge",
+              "label": "Energia",
+              "colors": ["red", "blue", "green"],
+              "valueMap": {
+                "red": "eco",
+                "blue": "normal",
+                "green": "sport"
+              },
+              "toggleOnRelease": false
+            },
+            {
+              "type": "checkbox_group",
+              "title": "Configurações de Diagnóstico",
+              "description": "Marque as opções desejadas",
+              "checkboxes": [
+                {
+                  "label": "Ativar Log de Dados",
+                  "command": "diag_enable_logging",
+                  "icon": "bi-file-earmark-text",
+                  "help": "Registra todos os parâmetros do sistema",
+                  "valueOn": 1,
+                  "valueOff": 0
+                },
+                {
+                  "label": "Monitorar Sensores",
+                  "command": "diag_monitor_sensors",
+                  "icon": "bi-graph-up",
+                  "help": "Monitora leitura em tempo real",
+                  "valueOn": 1,
+                  "valueOff": 0
+                },
+                {
+                  "label": "Detectar Falhas",
+                  "command": "diag_fault_detection",
+                  "icon": "bi-exclamation-circle",
+                  "help": "Ativa detecção automática de falhas",
+                  "valueOn": 1,
+                  "valueOff": 0
+                },
+                {
+                  "label": "Modo Debug",
+                  "command": "diag_debug_mode",
+                  "icon": "bi-bug",
+                  "help": "Modo de depuração avançado",
+                  "valueOn": 1,
+                  "valueOff": 0
+                }
+              ]
+            }
+            ,
+            {
+              "type": "linked_radio",
+              "title": "Modo Multi (Vinculado)",
+              "description": "Opção 'Multi' do grupo vinculado inj_mode_group",
+              "command": "injection_mode",
+              "group": "inj_mode_group",
+              "value": "multi",
+              "default": "mono"
             }
           ]
         }

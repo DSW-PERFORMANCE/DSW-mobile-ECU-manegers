@@ -70,6 +70,25 @@ class ECUCommunication {
         }
 
         for (const widget of widgets) {
+            // Ignore widgets that don't represent stored values (action buttons, plain buttons)
+            if (!widget) continue;
+            if (widget.type === 'action_buttons' || widget.type === 'button') continue;
+
+            // Checkbox groups contain multiple checkbox entries, each with its own command
+            if (widget.type === 'checkbox_group' && Array.isArray(widget.checkboxes)) {
+                for (const cb of widget.checkboxes) {
+                    if (!cb || !cb.command) continue;
+                    const value = currentValues[cb.command];
+                    const commandStr = `${cb.command}=${value}`;
+                    console.log(`Enviando: ${commandStr}`);
+                    await this.sendCommand(cb.command, value);
+                }
+                continue;
+            }
+
+            // If widget has no command, skip it
+            if (!widget.command) continue;
+
             const value = currentValues[widget.command];
             const commandStr = `${widget.command}=${value}`;
             console.log(`Enviando: ${commandStr}`);
@@ -87,6 +106,21 @@ class ECUCommunication {
         const reloadedValues = {};
 
         for (const widget of widgets) {
+            if (!widget) continue;
+            if (widget.type === 'action_buttons' || widget.type === 'button') continue;
+
+            if (widget.type === 'checkbox_group' && Array.isArray(widget.checkboxes)) {
+                for (const cb of widget.checkboxes) {
+                    if (!cb || !cb.command) continue;
+                    const commandStr = `${cb.command}?`;
+                    console.log(`Consultando: ${commandStr}`);
+                    const value = await this.queryCommand(cb.command);
+                    reloadedValues[cb.command] = value;
+                }
+                continue;
+            }
+
+            if (!widget.command) continue;
             const commandStr = `${widget.command}?`;
             console.log(`Consultando: ${commandStr}`);
             const value = await this.queryCommand(widget.command);
@@ -112,8 +146,17 @@ class ECUCommunication {
         const findDefault = (nodes) => {
             for (const node of nodes) {
                 if (node.widgets) {
+                    // Direct widget command
                     const widget = node.widgets.find(w => w.command === command);
                     if (widget) return widget.default;
+
+                    // Checkbox group inner commands
+                    for (const w of node.widgets) {
+                        if (w.type === 'checkbox_group' && Array.isArray(w.checkboxes)) {
+                            const cb = w.checkboxes.find(c => c.command === command);
+                            if (cb) return cb.default !== undefined ? cb.default : (cb.valueOff !== undefined ? cb.valueOff : 0);
+                        }
+                    }
                 }
                 if (node.children) {
                     const result = findDefault(node.children);
@@ -137,7 +180,13 @@ class ECUCommunication {
         const processNode = (node) => {
             if (node.widgets) {
                 node.widgets.forEach(widget => {
-                    defaults[widget.command] = widget.default;
+                    if (widget.type === 'checkbox_group' && Array.isArray(widget.checkboxes)) {
+                        widget.checkboxes.forEach(cb => {
+                            defaults[cb.command] = cb.default !== undefined ? cb.default : (cb.valueOff !== undefined ? cb.valueOff : 0);
+                        });
+                    } else if (widget.command) {
+                        defaults[widget.command] = widget.default;
+                    }
                 });
             }
             if (node.children) {

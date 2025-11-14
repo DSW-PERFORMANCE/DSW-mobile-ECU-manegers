@@ -7,6 +7,22 @@ class ECUManager {
         this.modifiedWidgets = new Set();
         this.screenModified = false;
         this.savedValues = {};
+        this._valueNormalizer = this._normalizeValue.bind(this);
+    }
+
+    _normalizeValue(v) {
+        // Normalize booleans
+        if (v === true || v === false) return v;
+        if (typeof v === 'string') {
+            const tv = v.trim().toLowerCase();
+            if (tv === 'true') return true;
+            if (tv === 'false') return false;
+            // numeric
+            if (tv !== '' && !isNaN(Number(tv))) {
+                return Number(tv);
+            }
+        }
+        return v;
     }
 
     async init() {
@@ -23,8 +39,87 @@ class ECUManager {
         try {
             const response = await fetch('su.json');
             this.config = await response.json();
+            // Validate linked_radio groups across the entire config
+            this._validateLinkedRadios();
         } catch (error) {
             console.error('Erro ao carregar configuração:', error);
+        }
+    }
+
+    _validateLinkedRadios() {
+        if (!this.config || !Array.isArray(this.config.tree)) return;
+
+        const groups = {};
+
+        const traverse = (nodes, parentIdPath = []) => {
+            for (const node of nodes) {
+                const nodeId = node.id || null;
+                if (node.widgets && Array.isArray(node.widgets)) {
+                    node.widgets.forEach(widget => {
+                        if (widget.type === 'linked_radio') {
+                            const groupId = widget.group || widget.command || null;
+                            if (!groupId) return;
+                            groups[groupId] = groups[groupId] || [];
+                            groups[groupId].push({
+                                widget: widget,
+                                command: widget.command,
+                                nodeId: nodeId,
+                                nodePath: parentIdPath.concat(node.label || nodeId).join(' / ')
+                            });
+                        }
+                    });
+                }
+
+                if (node.children && node.children.length > 0) {
+                    traverse(node.children, parentIdPath.concat(node.label || node.id));
+                }
+            }
+        };
+
+        traverse(this.config.tree);
+
+        // Expose groups map for runtime use (linked radio behavior)
+        this.linkedRadioGroups = groups;
+
+        // Now validate each group
+        for (const [groupId, members] of Object.entries(groups)) {
+            // Count validation
+            if (members.length < 2 || members.length > 4) {
+                const msg = `linked_radio group '${groupId}' must have between 2 and 4 members (found ${members.length}).`;
+                console.error(msg, members);
+                if (window.notificationManager) window.notificationManager.error(msg);
+            }
+
+            // Command equality validation
+            const commands = new Set(members.map(m => String(m.command)));
+            if (commands.size > 1) {
+                const msg = `linked_radio group '${groupId}' members must share the same 'command'. Found different commands: ${[...commands].join(', ')}.`;
+                console.error(msg, members);
+                if (window.notificationManager) window.notificationManager.error(msg);
+            }
+
+            // Allow members to be placed in the same node, but limit to maximum 2 per node
+            const nodeCounts = members.reduce((acc, m) => {
+                const id = m.nodeId || '__root__';
+                acc[id] = (acc[id] || 0) + 1;
+                return acc;
+            }, {});
+
+            for (const [nodeId, cnt] of Object.entries(nodeCounts)) {
+                if (cnt > 2) {
+                    const msg = `linked_radio group '${groupId}' has ${cnt} members inside node '${nodeId}'. Maximum 2 members per node are allowed.`;
+                    console.error(msg, members.filter(m => (m.nodeId || '__root__') === nodeId));
+                    if (window.notificationManager) window.notificationManager.error(msg);
+                }
+            }
+            // Disallow defining multiple options inside a single linked_radio widget when intending cross-frame linking
+            members.forEach(m => {
+                if (m.widget && Array.isArray(m.widget.options) && m.widget.options.length > 1) {
+                    const msg = `linked_radio widget in node '${m.nodePath}' uses 'options' array. For cross-frame linking each linked_radio must be a single-option widget (use 'value').`;
+                    console.error(msg, m);
+                    if (window.notificationManager) window.notificationManager.error(msg);
+                }
+            });
         }
     }
 
@@ -34,7 +129,16 @@ class ECUManager {
 
     setupEventListeners() {
         document.getElementById('saveBtn').addEventListener('click', () => this.saveCurrentScreen());
-        document.getElementById('reloadBtn').addEventListener('click', () => this.reloadCurrentScreen());
+        document.getElementById('reloadBtn').addEventListener('click', async () => {
+            if (this.screenModified) {
+                const shouldContinue = await window.dialogManager.confirm(
+                    'Alterações não salvas',
+                    'Existem alterações não salvas. Deseja recarregar sem salvar?'
+                );
+                if (!shouldContinue) return;
+            }
+            this.reloadCurrentScreen();
+        });
         document.getElementById('searchInput').addEventListener('input', (e) => this.searchTree(e.target.value));
 
         setTimeout(() => this.setupHomeButton(), 100);
@@ -129,7 +233,17 @@ class ECUManager {
         this.selectNode(nodeId, itemDiv, breadcrumb);
         this.modifiedWidgets.clear();
         this.screenModified = false;
-        this.savedValues = { ...this.currentValues };
+        // Normalize saved values to canonical types
+        this.savedValues = {};
+        Object.keys(this.currentValues).forEach(k => {
+            this.savedValues[k] = this._normalizeValue(this.currentValues[k]);
+        });
+        
+        // Clear history when switching to a new tab/node
+        if (window.globalHistoryManager) {
+            window.globalHistoryManager.clear();
+        }
+        
         this.updateBreadcrumb();
         this.renderWidgets(widgets, breadcrumb);
 
@@ -145,7 +259,11 @@ class ECUManager {
 
         const reloadedValues = await window.ecuCommunication.reloadCurrentScreen(currentWidgets);
         Object.assign(this.currentValues, reloadedValues);
-        this.savedValues = { ...this.currentValues };
+        // Normalize saved values after reload
+        this.savedValues = {};
+        Object.keys(this.currentValues).forEach(k => {
+            this.savedValues[k] = this._normalizeValue(this.currentValues[k]);
+        });
 
         setTimeout(() => {
             const widgetContainers = document.querySelectorAll('.widget-container');
@@ -155,7 +273,8 @@ class ECUManager {
                     const command = input.dataset.command;
                     if (command && this.currentValues[command] !== undefined) {
                         if (input.type === 'checkbox') {
-                            input.checked = this.currentValues[command] == 1;
+                                // Accept boolean or numeric saved values
+                                input.checked = this.currentValues[command] === true || this.currentValues[command] === 'true' || this.currentValues[command] == 1;
                         } else if (input.type === 'range') {
                             input.value = this.currentValues[command];
                             input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -165,6 +284,12 @@ class ECUManager {
                     }
                 });
             });
+
+            // After loading values, reset history to a clean slate with current state as base
+            if (window.globalHistoryManager) {
+                window.globalHistoryManager.clear();
+                window.globalHistoryManager.push(window.globalHistoryManager.createSnapshot());
+            }
         }, 50);
     }
 
@@ -205,16 +330,25 @@ class ECUManager {
             this.modifiedWidgets
         );
 
-        this.savedValues = { ...this.currentValues };
+        // Normalize savedValues when rendering widgets
+        this.savedValues = {};
+        Object.keys(this.currentValues).forEach(k => {
+            this.savedValues[k] = this._normalizeValue(this.currentValues[k]);
+        });
     }
 
     onValueChange(command, value, widgetElement) {
-        this.currentValues[command] = value;
+        const normalized = this._normalizeValue(value);
+        this.currentValues[command] = normalized;
 
-        if (this.savedValues[command] !== value) {
-            this.modifiedWidgets.add(command);
+        // Compare normalized saved value vs normalized incoming
+        const saved = this.savedValues.hasOwnProperty(command) ? this.savedValues[command] : undefined;
+        if (saved !== undefined) {
+            if (saved !== normalized) this.modifiedWidgets.add(command);
+            else this.modifiedWidgets.delete(command);
         } else {
-            this.modifiedWidgets.delete(command);
+            // If no saved value, treat change as modification
+            this.modifiedWidgets.add(command);
         }
 
         this.screenModified = this.modifiedWidgets.size > 0;
@@ -297,39 +431,133 @@ class ECUManager {
 
     searchTree(query) {
         const q = query.trim().toLowerCase();
-        const roots = document.querySelectorAll('#treeView .tree-root');
-
-        roots.forEach(root => {
-            const spans = root.querySelectorAll('.tree-item span');
-            let matchFound = false;
-
-            spans.forEach(span => {
-                const text = span.textContent;
-                span.innerHTML = text; // limpa highlight
-
-                if (q && text.toLowerCase().includes(q)) {
-                    matchFound = true;
-                    const regex = new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-                    span.innerHTML = text.replace(regex, '<mark>$1</mark>');
+        const treeView = document.getElementById('treeView');
+        const allNodes = treeView.querySelectorAll('.tree-node');
+        
+        if (!q) {
+            // Se a busca está vazia, volta ao estado normal
+            allNodes.forEach(node => {
+                node.style.display = '';
+                const itemDiv = node.querySelector('.tree-item');
+                if (itemDiv) {
+                    const span = itemDiv.querySelector('span:last-child');
+                    if (span) {
+                        const originalText = span.textContent;
+                        span.innerHTML = originalText;
+                    }
                 }
             });
+            return;
+        }
 
-            // mostra ou oculta a árvore
-            root.style.display = matchFound || !q ? '' : 'none';
+        // Separa a busca por "/" para pesquisa hierárquica
+        const searchTerms = q.split('/').map(term => term.trim()).filter(term => term.length > 0);
 
-            // expande se achou algo
-            const children = root.querySelectorAll('.tree-children');
-            const items = root.querySelectorAll('.tree-item');
+        // Função para obter o caminho completo de um nó
+        const getNodePath = (node) => {
+            let path = [];
+            let current = node;
+            
+            while (current && current !== treeView) {
+                if (current.classList.contains('tree-node')) {
+                    const itemDiv = current.querySelector('.tree-item');
+                    if (itemDiv) {
+                        const span = itemDiv.querySelector('span:last-child');
+                        if (span) {
+                            path.unshift(span.textContent);
+                        }
+                    }
+                }
+                current = current.parentElement;
+            }
+            return path;
+        };
 
-            if (matchFound && q) {
-                children.forEach(c => c.classList.add('show'));
-                items.forEach(i => i.classList.add('expanded'));
-            } else if (!q) {
-                children.forEach(c => c.classList.remove('show'));
-                items.forEach(i => i.classList.remove('expanded'));
+        // Marca todos os nós que correspondem à busca
+        const matchingNodes = new Set();
+        
+        allNodes.forEach(node => {
+            const itemDiv = node.querySelector('.tree-item');
+            if (!itemDiv) return;
+            
+            const span = itemDiv.querySelector('span:last-child');
+            if (!span) return;
+
+            const nodeText = span.textContent.toLowerCase();
+            const nodePath = getNodePath(node).map(p => p.toLowerCase());
+            
+            let isMatch = false;
+
+            if (searchTerms.length > 1) {
+                // Busca hierárquica: verifica se o caminho contém todos os termos na ordem
+                let pathIndex = 0;
+                let termIndex = 0;
+
+                while (pathIndex < nodePath.length && termIndex < searchTerms.length) {
+                    if (nodePath[pathIndex].includes(searchTerms[termIndex])) {
+                        termIndex++;
+                    }
+                    pathIndex++;
+                }
+
+                isMatch = termIndex === searchTerms.length;
+            } else {
+                // Busca simples: procura em qualquer parte do nome ou caminho
+                const fullPath = nodePath.join(' / ');
+                isMatch = fullPath.includes(q) || nodeText.includes(q);
+            }
+
+            if (isMatch) {
+                matchingNodes.add(node);
+                
+                // Destaca o texto correspondente
+                const originalText = span.textContent;
+                const highlightTerm = searchTerms[searchTerms.length - 1];
+                const regex = new RegExp(`(${highlightTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+                span.innerHTML = originalText.replace(regex, '<mark>$1</mark>');
+            } else {
+                span.innerHTML = span.textContent;
+            }
+        });
+
+        // Mostra/esconde nós e expande pais
+        allNodes.forEach(node => {
+            if (matchingNodes.has(node)) {
+                // Mostra este nó
+                node.style.display = '';
+                
+                // Expande este nó
+                const childrenDiv = node.querySelector('.tree-children');
+                if (childrenDiv) {
+                    childrenDiv.classList.add('show');
+                }
+                const itemDiv = node.querySelector('.tree-item');
+                if (itemDiv) {
+                    itemDiv.classList.add('expanded');
+                }
+                
+                // Expande e mostra todos os nós pais
+                let parent = node.parentElement;
+                while (parent && parent !== treeView) {
+                    if (parent.classList.contains('tree-node')) {
+                        parent.style.display = '';
+                        const parentChildrenDiv = parent.querySelector('.tree-children');
+                        if (parentChildrenDiv) {
+                            parentChildrenDiv.classList.add('show');
+                        }
+                        const parentItemDiv = parent.querySelector('.tree-item');
+                        if (parentItemDiv) {
+                            parentItemDiv.classList.add('expanded');
+                        }
+                    }
+                    parent = parent.parentElement;
+                }
+            } else {
+                node.style.display = 'none';
             }
         });
     }
+
 
 
 

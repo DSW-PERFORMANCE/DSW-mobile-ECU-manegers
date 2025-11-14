@@ -926,11 +926,18 @@ class WidgetManager {
                 container.appendChild(help);
             }
 
-            const currentValue = currentValues[widget.command] !== undefined
-                ? currentValues[widget.command]
-                : widget.default;
+            // For checkbox_group, pass the full currentValues map so each checkbox can read its own command value
+            // For other widgets, pass just the scalar value
+            let widgetCurrentValue;
+            if (widget.type === 'checkbox_group') {
+                widgetCurrentValue = currentValues; // Pass full map for checkbox_group
+            } else {
+                widgetCurrentValue = currentValues[widget.command] !== undefined
+                    ? currentValues[widget.command]
+                    : widget.default;
+            }
 
-            const widgetContent = this.createWidget(widget, currentValue, (cmd, val) => {
+            const widgetContent = this.createWidget(widget, widgetCurrentValue, (cmd, val) => {
                 onValueChange(cmd, val, container);
             });
             container.appendChild(widgetContent);
