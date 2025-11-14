@@ -17,13 +17,33 @@ class GlobalHistoryManager {
      * Create a snapshot of current widget values from the widgets area
      */
     createSnapshot() {
+        // Build a snapshot by scanning DOM elements with `data-command` so that
+        // multi-checkbox groups and individually-addressable inputs are captured
+        // deterministically (order-independent).
         const snapshot = {};
-        const currentWidgets = window.widgetManager?.getCurrentWidgets() || [];
+        const widgetsArea = document.querySelector('.widgets-area');
+        if (!widgetsArea) return snapshot;
 
-        currentWidgets.forEach(widget => {
-            const command = widget.command;
-            // Find the widget's current value in the DOM or from the manager's state
-            snapshot[command] = this._getWidgetValue(widget);
+        const elements = widgetsArea.querySelectorAll('input[data-command], select[data-command], textarea[data-command]');
+        elements.forEach(el => {
+            const cmd = el.dataset.command;
+            if (!cmd) return;
+
+            if (el.type === 'radio') {
+                if (el.checked) snapshot[cmd] = el.value;
+            } else if (el.type === 'checkbox') {
+                // If checkbox has explicit on/off mapping use those, otherwise use boolean
+                if (el.dataset.valueOn !== undefined && el.dataset.valueOff !== undefined) {
+                    snapshot[cmd] = el.checked ? this._coerceNumeric(el.dataset.valueOn) : this._coerceNumeric(el.dataset.valueOff);
+                } else {
+                    snapshot[cmd] = !!el.checked;
+                }
+            } else if (el.tagName.toLowerCase() === 'select') {
+                snapshot[cmd] = el.value;
+            } else {
+                // number / text
+                snapshot[cmd] = el.value;
+            }
         });
 
         return snapshot;
@@ -65,7 +85,8 @@ class GlobalHistoryManager {
             }
             case 'toggle': {
                 const input = container.querySelector('input[type="checkbox"]');
-                return input ? (input.checked ? 1 : 0) : null;
+                // Return boolean to match widget toggle semantics
+                return input ? !!input.checked : null;
             }
             case 'radio': {
                 const checked = container.querySelector('input[type="radio"]:checked');
@@ -146,17 +167,40 @@ class GlobalHistoryManager {
             return;
         }
 
-        const currentWidgets = window.widgetManager?.getCurrentWidgets() || [];
-
-        currentWidgets.forEach(widget => {
-            const command = widget.command;
-            const value = snapshot[command];
-            if (value === null || value === undefined) return;
-
-            this._setWidgetValue(widget, value);
-        });
+        // Apply snapshot by setting DOM elements that have matching data-command
+        for (const [cmd, value] of Object.entries(snapshot)) {
+            const els = Array.from(widgetsArea.querySelectorAll(`[data-command="${cmd}"]`));
+            els.forEach(el => {
+                if (el.type === 'radio') {
+                    el.checked = String(el.value) === String(value);
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                } else if (el.type === 'checkbox') {
+                    if (el.dataset.valueOn !== undefined && el.dataset.valueOff !== undefined) {
+                        // Coerce comparison
+                        el.checked = String(this._coerceNumeric(value)) === String(this._coerceNumeric(el.dataset.valueOn));
+                    } else {
+                        el.checked = value === true || value === 'true' || value == 1;
+                    }
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                } else if (el.tagName.toLowerCase() === 'select') {
+                    el.value = value;
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                } else {
+                    el.value = value;
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            });
+        }
 
         this.isApplyingHistory = false;
+    }
+
+    _coerceNumeric(v) {
+        // If v looks like a number, return Number, else return original string
+        if (v === null || v === undefined) return v;
+        if (typeof v === 'number') return v;
+        const n = Number(v);
+        return !isNaN(n) ? n : v;
     }
 
     /**
@@ -201,7 +245,8 @@ class GlobalHistoryManager {
             case 'toggle': {
                 input = container.querySelector('input[type="checkbox"]');
                 if (input) {
-                    input.checked = value == 1;
+                    // Accept boolean or numeric/string representations
+                    input.checked = value === true || value === 'true' || value == 1;
                     input.dispatchEvent(new Event('change', { bubbles: true }));
                 }
                 break;

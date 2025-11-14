@@ -59,6 +59,7 @@ Define cores, layout, responsividade, estilos dos widgets, gráficos, diálogos,
 - Função `renderWidgets` monta todos os widgets da tela.
 - **Color Toggle**: Widget especial que NÃO entra no histórico, envia comando direto à ECU.
 - **Checkbox Group**: Frame com múltiplas checkboxes independentes, cada uma com seu comando e valores customizáveis.
+ - **Linked Radio (`linked_radio`)**: Radio especial que pode ser renderizado em vários blocos com o mesmo `group` id. Todas as opções com o mesmo `group` compartilham seleção e escrevem no mesmo `command`.
 
 ### dialogs.js
 Sistema central de diálogos:

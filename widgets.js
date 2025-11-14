@@ -54,6 +54,8 @@ class WidgetManager {
                 return this.createColorToggle(widget, onValueChange);
             case 'checkbox_group':
                 return this.createCheckboxGroup(widget, currentValue, onValueChange);
+            case 'linked_radio':
+                return this.createLinkedRadio(widget, currentValue, onValueChange);
             case 'chart2d':
                 return this.createChart2D(widget, currentValue, onValueChange);
             default:
@@ -76,6 +78,7 @@ class WidgetManager {
         slider.max = widget.max;
         slider.value = currentValue;
         slider.className = 'form-range custom-slider';
+        slider.dataset.command = widget.command;
 
         const valueDisplay = document.createElement('div');
         valueDisplay.className = 'slider-value-display';
@@ -139,6 +142,7 @@ class WidgetManager {
         input.step = widget.step || 1;
         input.value = currentValue;
         input.className = 'form-control spinbox-input';
+        input.dataset.command = widget.command;
 
         const btnPlus = document.createElement('button');
         btnPlus.className = 'spinbox-btn spinbox-plus';
@@ -188,6 +192,7 @@ class WidgetManager {
 
         const select = document.createElement('select');
         select.className = 'form-select custom-select';
+        select.dataset.command = widget.command;
 
         widget.options.forEach(option => {
             const optionElement = document.createElement('option');
@@ -220,13 +225,16 @@ class WidgetManager {
 
         const input = document.createElement('input');
         input.type = 'checkbox';
-        input.checked = currentValue == 1;
+        // Normalize initial checked using boolean-friendly check
+        input.checked = currentValue === true || currentValue === 'true' || currentValue == 1;
+        input.dataset.command = widget.command;
 
         const slider = document.createElement('span');
         slider.className = 'toggle-slider';
 
         input.addEventListener('change', (e) => {
-            const value = e.target.checked ? 1 : 0;
+            // Use boolean values to match defaults and savedValues (avoids type mismatch)
+            const value = !!e.target.checked;
             onValueChange(widget.command, value);
             // Push to global history after value change
             if (window.globalHistoryManager) {
@@ -262,6 +270,7 @@ class WidgetManager {
             input.name = widget.command;
             input.value = option.value;
             input.checked = option.value == currentValue;
+            input.dataset.command = widget.command;
 
             const radioCustom = document.createElement('span');
             radioCustom.className = 'radio-custom';
@@ -546,6 +555,11 @@ class WidgetManager {
                 input.type = 'checkbox';
                 input.className = 'checkbox-input';
 
+                // Store command and on/off mappings for history and reload
+                input.dataset.command = checkboxConfig.command;
+                input.dataset.valueOn = String(checkboxConfig.valueOn !== undefined ? checkboxConfig.valueOn : 1);
+                input.dataset.valueOff = String(checkboxConfig.valueOff !== undefined ? checkboxConfig.valueOff : 0);
+
                 // Obtém o valor salvo (padrão: off)
                 const valueOff = checkboxConfig.valueOff !== undefined ? checkboxConfig.valueOff : 0;
                 const valueOn = checkboxConfig.valueOn !== undefined ? checkboxConfig.valueOn : 1;
@@ -598,6 +612,176 @@ class WidgetManager {
         }
 
         container.appendChild(checkboxesFrame);
+        return container;
+    }
+
+    createLinkedRadio(widget, currentValue, onValueChange) {
+        const container = document.createElement('div');
+        container.className = 'widget-linked-radio';
+
+        // Note: title/help are rendered by the surrounding widget container
+        // (renderWidgets creates a title row). Avoid duplicating them here.
+
+        const groupName = widget.group || widget.command || `radio_${Math.random().toString(36).substr(2,6)}`;
+
+        // Two modes supported for linked_radio:
+        // 1) Single-option widget (preferred): widget has `value` and represents one radio placed in its own frame/node.
+        // 2) Multi-option widget (legacy): widget has `options` array and renders several radios together.
+
+        const currentVal = (window.ecuManager && window.ecuManager.currentValues && window.ecuManager.currentValues[widget.command] !== undefined)
+            ? window.ecuManager.currentValues[widget.command]
+            : (widget.default !== undefined ? widget.default : null);
+
+        const optionsContainer = document.createElement('div');
+        optionsContainer.className = 'linked-radio-options';
+
+        // Preferred: single-value widget
+        if (widget.value !== undefined) {
+            const item = document.createElement('label');
+            item.className = 'radio-item linked single';
+
+            const input = document.createElement('input');
+            input.type = 'radio';
+            input.name = groupName;
+            input.value = widget.value;
+            input.checked = String(widget.value) === String(currentVal);
+            input.dataset.command = widget.command;
+
+            // Support click-again-to-unselect when group spans multiple nodes
+            input.addEventListener('mousedown', () => {
+                input._wasChecked = input.checked;
+            });
+
+            input.addEventListener('click', (e) => {
+                if (input._wasChecked) {
+                    const groupId = widget.group || widget.command || null;
+                    const groupInfo = window.ecuManager && window.ecuManager.linkedRadioGroups ? window.ecuManager.linkedRadioGroups[groupId] : null;
+                    const multipleNodes = groupInfo ? new Set(groupInfo.map(m => m.nodeId || '__root__')).size > 1 : true;
+
+                    if (multipleNodes) {
+                        e.preventDefault();
+                        e.stopPropagation();
+
+                        const savedVal = (window.ecuManager && window.ecuManager.savedValues && window.ecuManager.savedValues[widget.command] !== undefined)
+                            ? window.ecuManager.savedValues[widget.command]
+                            : (widget.default !== undefined ? widget.default : null);
+
+                        const radios = Array.from(document.querySelectorAll(`input[type="radio"][name="${widget.group || widget.command}"]`));
+                        radios.forEach(r => {
+                            r.checked = (savedVal !== null && String(r.value) === String(savedVal));
+                            r.dispatchEvent(new Event('change', { bubbles: true }));
+                        });
+
+                        if (window.notificationManager) {
+                            const msg = savedVal !== null ? `Revertido para '${savedVal}'` : 'Desvinculado (nenhum valor salvo)';
+                            window.notificationManager.info(`${widget.title || widget.command}: ${msg}`);
+                        }
+
+                        if (window.globalHistoryManager) window.globalHistoryManager.push(window.globalHistoryManager.createSnapshot());
+                        return;
+                    }
+                }
+
+                if (input.checked) {
+                    onValueChange(widget.command, widget.value);
+                    if (window.globalHistoryManager) window.globalHistoryManager.push(window.globalHistoryManager.createSnapshot());
+                }
+            });
+
+            const radioCustom = document.createElement('span');
+            radioCustom.className = 'radio-custom';
+
+            const radioLabel = document.createElement('span');
+            radioLabel.className = 'radio-label';
+            radioLabel.textContent = widget.label || widget.title || widget.value;
+
+            item.appendChild(input);
+            item.appendChild(radioCustom);
+            item.appendChild(radioLabel);
+            optionsContainer.appendChild(item);
+            container.appendChild(optionsContainer);
+            return container;
+        }
+
+        // Legacy: options array within same widget (not recommended for linked across frames)
+        if (widget.options && Array.isArray(widget.options)) {
+            widget.options.forEach(opt => {
+                const item = document.createElement('label');
+                item.className = 'radio-item linked';
+
+                const input = document.createElement('input');
+                input.type = 'radio';
+                input.name = groupName;
+                input.value = opt.value;
+                input.checked = String(opt.value) === String(currentVal);
+
+                // Allow 'click again to unselect' behavior for linked radios when group spans multiple nodes
+                input.addEventListener('mousedown', () => {
+                    input._wasChecked = input.checked;
+                });
+
+                input.addEventListener('click', (e) => {
+                    // If it was already checked before this click, treat as unselect request
+                    if (input._wasChecked) {
+                        const groupId = widget.group || widget.command || null;
+                        const groupInfo = window.ecuManager && window.ecuManager.linkedRadioGroups ? window.ecuManager.linkedRadioGroups[groupId] : null;
+
+                        // If groupInfo exists and members span multiple nodes, perform unselect/revert
+                        const multipleNodes = groupInfo ? new Set(groupInfo.map(m => m.nodeId || '__root__')).size > 1 : true;
+
+                        if (multipleNodes) {
+                            e.preventDefault();
+                            e.stopPropagation();
+
+                            // Revert to saved value (or widget.default)
+                            const savedVal = (window.ecuManager && window.ecuManager.savedValues && window.ecuManager.savedValues[widget.command] !== undefined)
+                                ? window.ecuManager.savedValues[widget.command]
+                                : (widget.default !== undefined ? widget.default : null);
+
+                            // Find all radios in the group and set according to savedVal (or uncheck all if none)
+                            const radios = Array.from(document.querySelectorAll(`input[type="radio"][name="${widget.group || widget.command}"]`));
+                            radios.forEach(r => {
+                                r.checked = (savedVal !== null && String(r.value) === String(savedVal));
+                                r.dispatchEvent(new Event('change', { bubbles: true }));
+                            });
+
+                            if (window.notificationManager) {
+                                const msg = savedVal !== null ? `Revertido para '${savedVal}'` : 'Desvinculado (nenhum valor salvo)';
+                                window.notificationManager.info(`${widget.title || widget.command}: ${msg}`);
+                            }
+
+                            // Push snapshot after revert
+                            if (window.globalHistoryManager) {
+                                window.globalHistoryManager.push(window.globalHistoryManager.createSnapshot());
+                            }
+                            return;
+                        }
+                    }
+
+                    // Normal change behavior
+                    if (input.checked) {
+                        onValueChange(widget.command, opt.value);
+                        if (window.globalHistoryManager) {
+                            window.globalHistoryManager.push(window.globalHistoryManager.createSnapshot());
+                        }
+                    }
+                });
+
+                const radioCustom = document.createElement('span');
+                radioCustom.className = 'radio-custom';
+
+                const radioLabel = document.createElement('span');
+                radioLabel.className = 'radio-label';
+                radioLabel.textContent = opt.label || opt.value;
+
+                item.appendChild(input);
+                item.appendChild(radioCustom);
+                item.appendChild(radioLabel);
+                optionsContainer.appendChild(item);
+            });
+        }
+
+        container.appendChild(optionsContainer);
         return container;
     }
 
