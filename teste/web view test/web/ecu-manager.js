@@ -139,8 +139,18 @@ class ECUManager {
             }
             this.reloadCurrentScreen();
         });
+        
+        // Import file input
+        document.getElementById('importFileInput').addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                this.importCurrentConfig(e.target.files[0]);
+                e.target.value = ''; // Reset input
+            }
+        });
+        
         document.getElementById('searchInput').addEventListener('input', (e) => this.searchTree(e.target.value));
 
+        // Export/Import buttons are added dynamically in renderWidgets, so we need to set them up there
         setTimeout(() => this.setupHomeButton(), 100);
     }
 

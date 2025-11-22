@@ -62,8 +62,18 @@ class ECUManager {
             }
             this.reloadCurrentScreen();
         });
+        
+        // Import file input
+        document.getElementById('importFileInput').addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                this.importCurrentConfig(e.target.files[0]);
+                e.target.value = ''; // Reset input
+            }
+        });
+        
         document.getElementById('searchInput').addEventListener('input', (e) => this.searchTree(e.target.value));
 
+        // Export/Import buttons are added dynamically in renderWidgets, so we need to set them up there
         setTimeout(() => this.setupHomeButton(), 100);
     }
 
@@ -579,6 +589,174 @@ class ECUManager {
                     console.error(`Error in value change listener for ${command}:`, error);
                 }
             });
+        }
+    }
+
+    /**
+     * Exporta a configuração atual da aba como arquivo criptografado
+     */
+    async exportCurrentConfig() {
+        if (!this.currentNodeId) {
+            if (window.notificationManager) {
+                window.notificationManager.warning('Selecione uma aba para exportar');
+            } else {
+                alert('Selecione uma aba para exportar');
+            }
+            return;
+        }
+
+        const node = this.findNodeById(this.currentNodeId);
+        if (!node) {
+            if (window.notificationManager) {
+                window.notificationManager.warning('Aba não encontrada');
+            } else {
+                alert('Aba não encontrada');
+            }
+            return;
+        }
+
+        // Solicita senha ao usuário
+        const values = await window.dialogManager.promptValues(
+            'Exportar Configuração',
+            [
+                {
+                    label: 'Senha de Criptografia',
+                    type: 'text',
+                    default: '',
+                    icon: 'bi-lock',
+                    validate: (val) => val && val.length >= 6
+                }
+            ],
+            'bi-download'
+        );
+
+        if (!values) return;
+
+        const password = values['Senha de Criptografia'];
+
+        if (!password || password.length < 6) {
+            if (window.notificationManager) {
+                window.notificationManager.warning('Senha deve ter pelo menos 6 caracteres');
+            } else {
+                alert('Senha deve ter pelo menos 6 caracteres');
+            }
+            return;
+        }
+
+        try {
+            // Prepara dados para exportar
+            const configData = {
+                timestamp: new Date().toISOString(),
+                version: '1.0',
+                tabName: this.currentBreadcrumb,
+                nodeId: this.currentNodeId,
+                values: this.currentValues,
+                widgets: node.widgets
+            };
+
+            // Exporta com criptografia
+            await window.configExportImport.exportConfig(
+                configData,
+                password,
+                `config_${node.label.replace(/\s+/g, '_')}`
+            );
+
+            if (window.notificationManager) {
+                window.notificationManager.info('Configuração exportada com sucesso!');
+            } else {
+                alert('Configuração exportada com sucesso!');
+            }
+        } catch (error) {
+            console.error('Erro ao exportar:', error);
+            if (window.notificationManager) {
+                window.notificationManager.error('Erro ao exportar configuração', error.message);
+            } else {
+                alert('Erro ao exportar: ' + error.message);
+            }
+        }
+    }
+
+    /**
+     * Importa uma configuração de arquivo criptografado
+     */
+    async importCurrentConfig(file) {
+        if (!window.configExportImport.isValidConfigFile(file)) {
+            window.notificationManager.warning('Arquivo inválido. Use um arquivo .dswcfg');
+            return;
+        }
+
+        // Solicita senha ao usuário
+        const values = await window.dialogManager.promptValues(
+            'Importar Configuração',
+            [
+                {
+                    label: 'Senha de Descriptografia',
+                    type: 'text',
+                    default: '',
+                    icon: 'bi-lock-fill'
+                }
+            ],
+            'bi-upload'
+        );
+
+        if (!values) return;
+
+        const password = values['Senha de Descriptografia'];
+
+        try {
+            // Importa e descriptografa
+            const configData = await window.configExportImport.importConfig(file, password);
+
+            // Mostra informações do arquivo
+            const infoMsg = `
+Arquivo: ${configData.tabName}
+Data: ${new Date(configData.timestamp).toLocaleString()}
+Versão: ${configData.version}
+            `.trim();
+
+            const shouldImport = await window.dialogManager.confirm(
+                'Confirmar Importação',
+                `${infoMsg}\n\nDeseja aplicar estas configurações?`
+            );
+
+            if (!shouldImport) return;
+
+            // Aplica as valores importados
+            Object.assign(this.currentValues, configData.values);
+            this.modifiedWidgets.clear();
+            this.screenModified = false;
+
+            // Recarrega os widgets com os novos valores
+            if (this.currentNodeId) {
+                const node = this.findNodeById(this.currentNodeId);
+                if (node && node.widgets) {
+                    window.widgetManager.renderWidgets(
+                        node.widgets,
+                        document.getElementById('widgetsArea'),
+                        this.currentValues,
+                        (command, value, widgetElement) => this.onValueChange(command, value, widgetElement),
+                        this.currentBreadcrumb,
+                        this.modifiedWidgets
+                    );
+                }
+            }
+
+            // Normaliza os valores salvos
+            this.savedValues = {};
+            Object.keys(this.currentValues).forEach(k => {
+                this.savedValues[k] = this._normalizeValue(this.currentValues[k]);
+            });
+
+            this.updateBreadcrumb();
+            window.notificationManager.info('Configuração importada com sucesso!');
+
+        } catch (error) {
+            console.error('Erro ao importar:', error);
+            if (error.message.includes('decrypt')) {
+                window.notificationManager.error('Erro ao descriptografar', 'Senha incorreta ou arquivo corrompido');
+            } else {
+                window.notificationManager.error('Erro ao importar configuração', error.message);
+            }
         }
     }
 }

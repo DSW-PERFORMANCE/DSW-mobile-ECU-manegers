@@ -811,9 +811,24 @@ class WidgetManager {
             redoBtn.innerHTML = '<i class="bi bi-arrow-clockwise"></i>';
             redoBtn.disabled = true;
 
+            // Export / Import buttons
+            const exportBtn = document.createElement('button');
+            exportBtn.className = 'export-btn';
+            exportBtn.title = 'Exportar configuração criptografada';
+            exportBtn.innerHTML = '<i class="bi bi-download"></i>';
+            exportBtn.id = 'exportBtnHeader';
+
+            const importBtn = document.createElement('button');
+            importBtn.className = 'import-btn';
+            importBtn.title = 'Importar configuração criptografada';
+            importBtn.innerHTML = '<i class="bi bi-upload"></i>';
+            importBtn.id = 'importBtnHeader';
+
             // Store references for later updates by the chart controller
             this._undoButton = undoBtn;
             this._redoButton = redoBtn;
+            this._exportButton = exportBtn;
+            this._importButton = importBtn;
 
             // Wire the buttons to call the latest chart controller when clicked
             undoBtn.addEventListener('click', () => {
@@ -849,6 +864,16 @@ class WidgetManager {
             if (window.globalHistoryManager) {
                 window.globalHistoryManager.setButtons(undoBtn, redoBtn);
             }
+
+            // Wire export/import buttons
+            exportBtn.addEventListener('click', () => {
+                if (window.ecuManager) {
+                    window.ecuManager.exportCurrentConfig();
+                }
+            });
+            importBtn.addEventListener('click', () => {
+                document.getElementById('importFileInput').click();
+            });
 
             const headerStrip = document.createElement('div');
             headerStrip.className = 'breadcrumb-strip';
@@ -886,6 +911,8 @@ class WidgetManager {
             headerRow.appendChild(homeBtn);
             headerRow.appendChild(undoBtn);
             headerRow.appendChild(redoBtn);
+            headerRow.appendChild(exportBtn);
+            headerRow.appendChild(importBtn);
             headerRow.appendChild(headerStrip);
 
             widgetsArea.appendChild(headerRow);
