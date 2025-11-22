@@ -73,6 +73,18 @@ class WidgetManager {
     }
 
     /**
+     * Get the resolved command for a widget, considering dynamic variations.
+     * Critical: Call this BEFORE any reference to widget.command
+     * @param {Object} widget - Base widget configuration
+     * @param {Object} currentValues - Current ECU values map
+     * @returns {string} - The effective command to use
+     */
+    getResolvedCommand(widget, currentValues = {}) {
+        const resolved = this.resolveWidgetVariation(widget, currentValues);
+        return resolved.command;
+    }
+
+    /**
      * Get a unique ID for a widget instance (used for tracking dynamic updates)
      */
     getWidgetInstanceId(widget, index) {
@@ -230,8 +242,19 @@ class WidgetManager {
     }
 
     createCombobox(widget, currentValue, onValueChange) {
+        // Get the mode: classic or modern (default: modern)
+        const mode = widget.mode || 'modern';
+        
+        if (mode === 'classic') {
+            return this.createComboboxClassic(widget, currentValue, onValueChange);
+        } else {
+            return this.createComboboxModern(widget, currentValue, onValueChange);
+        }
+    }
+
+    createComboboxClassic(widget, currentValue, onValueChange) {
         const container = document.createElement('div');
-        container.className = 'widget-combobox';
+        container.className = 'widget-combobox widget-combobox-classic';
 
         const select = document.createElement('select');
         select.className = 'form-select custom-select';
@@ -257,6 +280,180 @@ class WidgetManager {
 
         container.appendChild(select);
         return container;
+    }
+
+    createComboboxModern(widget, currentValue, onValueChange) {
+        const container = document.createElement('div');
+        container.className = 'widget-combobox widget-combobox-modern';
+
+        // Display button showing current selection
+        const displayButton = document.createElement('button');
+        displayButton.className = 'combobox-display-button';
+        displayButton.type = 'button';
+        
+        // Find current label
+        const currentOption = widget.options.find(opt => opt.value == currentValue);
+        const currentLabel = currentOption ? currentOption.label : 'Selecione uma opção';
+        displayButton.textContent = currentLabel;
+        
+        // Store reference to update display later
+        displayButton.dataset.command = widget.command;
+
+        // Open modal on click
+        displayButton.addEventListener('click', () => {
+            this.openComboboxModal(widget, currentValue, (selectedValue) => {
+                // Update display
+                const selected = widget.options.find(opt => opt.value == selectedValue);
+                if (selected) {
+                    displayButton.textContent = selected.label;
+                }
+                
+                // Call callback
+                onValueChange(widget.command, selectedValue);
+                
+                // Push to global history
+                if (window.globalHistoryManager) {
+                    window.globalHistoryManager.push(window.globalHistoryManager.createSnapshot());
+                }
+            });
+        });
+
+        container.appendChild(displayButton);
+        return container;
+    }
+
+    /**
+     * Open modal for selecting ComboBox option
+     */
+    openComboboxModal(widget, currentValue, onSelected) {
+        // Create modal overlay
+        const modalOverlay = document.createElement('div');
+        modalOverlay.className = 'combobox-modal-overlay';
+
+        const modal = document.createElement('div');
+        modal.className = 'combobox-modal';
+
+        // Header
+        const header = document.createElement('div');
+        header.className = 'combobox-modal-header';
+        const title = document.createElement('h3');
+        title.textContent = widget.title || 'Selecione uma opção';
+        header.appendChild(title);
+
+        // Search box
+        const searchContainer = document.createElement('div');
+        searchContainer.className = 'combobox-search-container';
+        const searchInput = document.createElement('input');
+        searchInput.type = 'text';
+        searchInput.className = 'combobox-search-input';
+        searchInput.placeholder = 'Pesquisar...';
+        searchInput.setAttribute('aria-label', 'Pesquisar opções');
+        searchContainer.appendChild(searchInput);
+
+        // Options list
+        const optionsList = document.createElement('div');
+        optionsList.className = 'combobox-options-list';
+
+        // Populate options
+        const renderOptions = (filter = '') => {
+            optionsList.innerHTML = '';
+            const filtered = widget.options.filter(opt => 
+                opt.label.toLowerCase().includes(filter.toLowerCase())
+            );
+
+            if (filtered.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'combobox-empty-state';
+                empty.textContent = 'Nenhuma opção encontrada';
+                optionsList.appendChild(empty);
+                return;
+            }
+
+            filtered.forEach(option => {
+                const item = document.createElement('button');
+                item.type = 'button';
+                item.className = 'combobox-option-item';
+                if (option.value == currentValue) {
+                    item.classList.add('selected');
+                }
+                item.textContent = option.label;
+                item.dataset.value = option.value;
+
+                item.addEventListener('click', () => {
+                    closeModal();
+                    onSelected(option.value);
+                });
+
+                optionsList.appendChild(item);
+            });
+        };
+
+        renderOptions();
+
+        // Search input event
+        searchInput.addEventListener('input', (e) => {
+            renderOptions(e.target.value);
+        });
+
+        // Footer with buttons
+        const footer = document.createElement('div');
+        footer.className = 'combobox-modal-footer';
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'btn-cancel';
+        cancelBtn.type = 'button';
+        cancelBtn.textContent = 'Cancelar';
+        cancelBtn.addEventListener('click', closeModal);
+
+        const applyBtn = document.createElement('button');
+        applyBtn.className = 'btn-apply';
+        applyBtn.type = 'button';
+        applyBtn.textContent = 'Aplicar';
+        
+        // Get selected value from UI
+        applyBtn.addEventListener('click', () => {
+            const selectedItem = optionsList.querySelector('.combobox-option-item.selected');
+            if (selectedItem) {
+                closeModal();
+                onSelected(selectedItem.dataset.value);
+            }
+        });
+
+        footer.appendChild(cancelBtn);
+        footer.appendChild(applyBtn);
+
+        // Assemble modal
+        modal.appendChild(header);
+        modal.appendChild(searchContainer);
+        modal.appendChild(optionsList);
+        modal.appendChild(footer);
+
+        modalOverlay.appendChild(modal);
+        document.body.appendChild(modalOverlay);
+
+        // Focus on search input
+        searchInput.focus();
+
+        // Close modal function
+        const closeModal = () => {
+            modalOverlay.remove();
+        };
+
+        // Close on overlay click
+        modalOverlay.addEventListener('click', (e) => {
+            if (e.target === modalOverlay) {
+                closeModal();
+            }
+        });
+
+        // Close on Escape key
+        const escapeHandler = (e) => {
+            if (e.key === 'Escape') {
+                closeModal();
+                document.removeEventListener('keydown', escapeHandler);
+            }
+        };
+        document.addEventListener('keydown', escapeHandler);
     }
 
     createToggle(widget, currentValue, onValueChange) {
@@ -784,6 +981,7 @@ class WidgetManager {
 
             // Resolve widget variation if it has dynamic parameters
             const resolvedWidget = this.resolveWidgetVariation(widget, currentValues);
+            const resolvedCommand = resolvedWidget.command;
             const instanceId = this.getWidgetInstanceId(widget, widgetIndex);
 
             const titleRow = document.createElement('div');
@@ -797,7 +995,7 @@ class WidgetManager {
             modifiedIndicator.className = 'widget-modified-indicator';
             modifiedIndicator.title = 'Widget alterado';
 
-            if (modifiedWidgets.has(widget.command)) {
+            if (modifiedWidgets.has(resolvedCommand)) {
                 modifiedIndicator.style.display = 'block';
             } else {
                 modifiedIndicator.style.display = 'none';
@@ -821,8 +1019,8 @@ class WidgetManager {
             if (resolvedWidget.type === 'checkbox_group') {
                 widgetCurrentValue = currentValues; // Pass full map for checkbox_group
             } else {
-                widgetCurrentValue = currentValues[widget.command] !== undefined
-                    ? currentValues[widget.command]
+                widgetCurrentValue = currentValues[resolvedCommand] !== undefined
+                    ? currentValues[resolvedCommand]
                     : resolvedWidget.default;
             }
 

@@ -169,6 +169,7 @@
               "title": "Modo de Ignição",
               "help": "Selecione o modo de operação da ignição",
               "command": "tipologia/padrao/ingn",
+              "mode": "classic",
               "options": [
                 {"label": "Sequencial", "value": "2"},
                 {"label": "Semi-Sequencial", "value": "1"},
@@ -213,6 +214,7 @@
               "title": "Tipo de Sensor",
               "help": "Tipo de sensor de temperatura",
               "command": "temp_sensor_type",
+              "mode": "modern",
               "options": [
                 {"label": "NTC 10K", "value": "0"},
                 {"label": "NTC 5K", "value": "1"},

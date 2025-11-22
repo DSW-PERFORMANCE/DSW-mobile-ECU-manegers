@@ -57,6 +57,7 @@ Qualquer campo de widget pode ser alterado dinamicamente através de `parameterV
 
 - `title` - Nome do widget
 - `help` - Texto de ajuda
+- `command` - **⚠️ CRÍTICO: Comando pode mudar!** Ver seção abaixo
 - `min` - Valor mínimo (para slider, spinbox, etc.)
 - `max` - Valor máximo
 - `step` - Incremento (para spinbox)
@@ -66,7 +67,66 @@ Qualquer campo de widget pode ser alterado dinamicamente através de `parameterV
 - `checkboxes` - Para checkbox_group (array de configs)
 - ... qualquer outro parâmetro específico do widget
 
-## Exemplo Prático
+## ⚠️ CRÍTICO: Comando Dinâmico
+
+### Problema
+
+O `command` pode **mudar entre variações**! Isso é extremamente importante:
+
+```json
+{
+  "command": "sensor_base",
+  "parameterVariations": {
+    "temperature": {
+      "command": "sensor_temperature"  // ← COMANDO DIFERENTE!
+    },
+    "pressure": {
+      "command": "sensor_pressure"    // ← OUTRO COMANDO!
+    }
+  }
+}
+```
+
+### Por Que Isso É Perigoso
+
+Se o comando muda mas o sistema continua usando o valor antigo:
+
+1. ❌ Widget mostra valor do comando **anterior**
+2. ❌ Usuário muda a interface, alterar comando **errado**
+3. ❌ ECU recebe dados para comando **errado**
+4. ❌ **DADOS INCONSISTENTES** 🚨
+
+### Como Funciona a Proteção
+
+**Ordem CRÍTICA de operações:**
+
+```javascript
+// 1. Resolver widget (pega a config correta)
+const resolvedWidget = widgetManager.resolveWidgetVariation(widget, currentValues);
+
+// 2. Extrair comando resolvido
+const command = resolvedWidget.command;
+
+// 3. Buscar valor do NOVO comando
+const value = currentValues[command];  // ✅ Correto!
+
+// 4. Usar comando resolvido em callbacks
+onValueChange(command, newValue);      // ✅ Correto!
+
+// ❌ NUNCA fazer isso:
+const value = currentValues[widget.command];  // ← Pode estar desatualizado!
+```
+
+### Implementação
+
+Todas as referências ao comando agora usam o comando **resolvido**:
+
+- `renderWidgets()` extrai `resolvedCommand`
+- `createWidget()` recebe widget já resolvido
+- Callbacks usam comando resolvido
+- Indicador de modificação usa comando resolvido
+
+## Campos Suportados
 
 ### Cenário: Calibração de Combustível por Tipo de Motor
 

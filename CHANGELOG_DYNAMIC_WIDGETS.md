@@ -112,6 +112,101 @@ Implementado sistema completo de **widgets dinâmicos** que permite alterar par�
 - **Atualização**: Título, help, range, options - tudo pode mudar dinamicamente
 - **Valor preservado**: Valor anterior é mantido se dentro do novo range
 
+## ⚠️ CRÍTICO: Comando Dinâmico
+
+### Problema
+
+Um widget pode ter **comando diferente** em cada variação! Exemplo:
+
+```json
+{
+  "command": "inj_time_base",
+  "parameterVariations": {
+    "1": { "command": "inj_time_gasoline" },  // ← Comando DIFERENTE!
+    "2": { "command": "inj_time_alcohol" }
+  }
+}
+```
+
+### Risco
+
+Se o comando muda mas o valor **NÃO** é recarregado do novo comando:
+- ❌ Widget mostraria valor do comando **antigo**
+- ❌ Salvar alteraria o comando **errado**
+- ❌ **DESASTRE DATA**: ECU receberia dados inconsistentes
+
+### Solução Implementada
+
+**Ordem crítica de operações:**
+
+1. **ANTES** de tudo: Resolver comando dinâmico
+   ```javascript
+   const resolvedCommand = widgetManager.getResolvedCommand(widget, currentValues);
+   ```
+
+2. **DEPOIS**: Buscar valor do comando resolvido
+   ```javascript
+   const currentValue = currentValues[resolvedCommand];
+   ```
+
+3. **NUNCA**: Usar `widget.command` diretamente se há variações
+   ```javascript
+   // ❌ ERRADO:
+   const value = currentValues[widget.command];
+   
+   // ✅ CORRETO:
+   const resolved = widgetManager.getResolvedCommand(widget, currentValues);
+   const value = currentValues[resolved];
+   ```
+
+### Quando Comando Pode Mudar
+
+```json
+{
+  "type": "slider",
+  "command": "default_cmd",
+  "parameterCommand": "config_type",
+  "parameterVariations": {
+    "basic": {
+      "command": "basic_config",
+      "title": "Configuração Básica"
+    },
+    "advanced": {
+      "command": "advanced_config",
+      "title": "Configuração Avançada"
+    }
+  }
+}
+```
+
+Quando `config_type` muda:
+- `basic` → `advanced`: Carrega de `advanced_config`
+- `advanced` → `basic`: Carrega de `basic_config`
+
+### Implementação em Widgets
+
+Ao criar widget, **sempre**:
+
+```javascript
+createWidget(widget, currentValue, onValueChange) {
+    // 1. Resolver widget (pega comando correto)
+    const resolved = this.resolveWidgetVariation(widget, currentValues);
+    
+    // 2. Resolver comando específico
+    const command = resolved.command;
+    
+    // 3. Buscar valor correto
+    const value = currentValues[command] !== undefined
+        ? currentValues[command]
+        : resolved.default;
+    
+    // 4. Usar comando resolvido em callbacks
+    slider.addEventListener('change', (e) => {
+        onValueChange(command, e.target.value);  // ← Usar resolvido!
+    });
+}
+```
+
 ## Benefícios
 
 ✅ **Adaptação Automática** - Interface se adapta sem reload
@@ -119,6 +214,7 @@ Implementado sistema completo de **widgets dinâmicos** que permite alterar par�
 ✅ **Melhor UX** - Ranges e opções relevantes para cada contexto
 ✅ **Manutenível** - Configuração centralizada no JSON
 ✅ **Type-Safe** - Sistema usa tipos consistentes
+✅ **Seguro** - Comando sempre resolvido corretamente
 
 ## Casos de Uso
 
@@ -127,6 +223,7 @@ Implementado sistema completo de **widgets dinâmicos** que permite alterar par�
 3. **Combustível** - Gasolina, álcool, flex fuel
 4. **Contexto Dinâmico** - Temperatura, RPM, pressão
 5. **Perfis de Usuário** - Novato vs especialista
+6. **Comandos Distintos** - Motor 1 vs Motor 2 com parâmetros diferentes
 
 ## Testes
 
@@ -136,6 +233,20 @@ Para testar:
 2. Observe widget recompilado com novo título/range
 3. Verifique console para logs de mudanças
 4. Confirme que valor anterior é preservado quando possível
+5. **CRÍTICO**: Teste mudança de comando
+   - Configure widget com comando diferente por variação
+   - Mude entre variações
+   - Confirme que valores carregam do comando correto
+   - Verifique console que comando foi resolvido
+
+## Checklist de Segurança
+
+- [ ] Widget usa `getResolvedCommand()` para comando
+- [ ] Widget usa `resolveWidgetVariation()` para configuração
+- [ ] Valor carregado DEPOIS de resolver comando
+- [ ] Callbacks usam comando resolvido
+- [ ] Logs mostram comando correto em console
+- [ ] Teste com comando dinâmico diferente em cada variação
 
 ## Próximas Etapas Opcionais
 
@@ -144,6 +255,7 @@ Para testar:
 - [ ] Animações de transição
 - [ ] UI de debug no painel
 - [ ] Presets baseados em variações
+- [ ] Validação de comandos em tempo de carregamento
 
 ## Documentação
 
