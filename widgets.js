@@ -6,6 +6,9 @@ class WidgetManager {
         // Header buttons (set when rendering widgets)
         this._undoButton = null;
         this._redoButton = null;
+        // Map to track dynamic widgets and their parameter listeners
+        this.dynamicWidgets = new Map(); // widgetId -> { parameterCommand, variations, listeners }
+        this.dynamicWidgetInstances = new Map(); // widgetInstanceId -> { container, widget, listeners }
     }
 
     setCurrentWidgets(widgets) {
@@ -32,6 +35,48 @@ class WidgetManager {
         }
 
         return validValue;
+    }
+
+    /**
+     * Resolve the effective widget configuration based on dynamic parameter.
+     * If widget has parameterVariations, it will merge the variation config on top of base config.
+     * @param {Object} widget - Base widget configuration
+     * @param {Object} currentValues - Current ECU values map
+     * @returns {Object} - Merged widget configuration
+     */
+    resolveWidgetVariation(widget, currentValues = {}) {
+        // If widget doesn't have dynamic parameters, return as-is
+        if (!widget.parameterCommand || !widget.parameterVariations) {
+            return widget;
+        }
+
+        // Get the parameter value from currentValues
+        const parameterValue = currentValues[widget.parameterCommand];
+        const variationKey = parameterValue !== undefined 
+            ? String(parameterValue)
+            : (widget.defaultVariation !== undefined ? widget.defaultVariation : null);
+
+        if (!variationKey || !widget.parameterVariations[variationKey]) {
+            return widget; // No matching variation, return base config
+        }
+
+        // Merge the variation on top of base widget config
+        const variation = widget.parameterVariations[variationKey];
+        return {
+            ...widget,
+            ...variation,
+            // Preserve certain fields that shouldn't be overridden
+            parameterCommand: widget.parameterCommand,
+            parameterVariations: widget.parameterVariations,
+            defaultVariation: widget.defaultVariation
+        };
+    }
+
+    /**
+     * Get a unique ID for a widget instance (used for tracking dynamic updates)
+     */
+    getWidgetInstanceId(widget, index) {
+        return `${widget.command}_${widget.type}_${index}`;
     }
 
     createWidget(widget, currentValue, onValueChange) {
@@ -786,6 +831,18 @@ class WidgetManager {
     }
 
     renderWidgets(widgets, widgetsArea, currentValues, onValueChange, breadcrumbPath, modifiedWidgets = new Set()) {
+        // Clean up previous dynamic widget listeners
+        for (const [id, instance] of this.dynamicWidgetInstances) {
+            if (instance.listeners) {
+                instance.listeners.forEach(listener => {
+                    if (window.ecuManager && window.ecuManager.unsubscribeFromValueChange) {
+                        window.ecuManager.unsubscribeFromValueChange(listener.command, listener.callback);
+                    }
+                });
+            }
+        }
+        this.dynamicWidgetInstances.clear();
+
         widgetsArea.innerHTML = '';
 
         if (breadcrumbPath) {
@@ -893,16 +950,20 @@ class WidgetManager {
 
         this.setCurrentWidgets(widgets);
 
-        widgets.forEach(widget => {
+        widgets.forEach((widget, widgetIndex) => {
             const container = document.createElement('div');
             container.className = 'widget-container';
+
+            // Resolve widget variation if it has dynamic parameters
+            const resolvedWidget = this.resolveWidgetVariation(widget, currentValues);
+            const instanceId = this.getWidgetInstanceId(widget, widgetIndex);
 
             const titleRow = document.createElement('div');
             titleRow.className = 'widget-title-row';
 
             const title = document.createElement('div');
             title.className = 'widget-title';
-            title.textContent = widget.title;
+            title.textContent = resolvedWidget.title;
 
             const modifiedIndicator = document.createElement('div');
             modifiedIndicator.className = 'widget-modified-indicator';
@@ -919,30 +980,101 @@ class WidgetManager {
 
             container.appendChild(titleRow);
 
-            if (widget.help) {
+            if (resolvedWidget.help) {
                 const help = document.createElement('div');
                 help.className = 'widget-help';
-                help.textContent = widget.help;
+                help.textContent = resolvedWidget.help;
                 container.appendChild(help);
             }
 
             // For checkbox_group, pass the full currentValues map so each checkbox can read its own command value
             // For other widgets, pass just the scalar value
             let widgetCurrentValue;
-            if (widget.type === 'checkbox_group') {
+            if (resolvedWidget.type === 'checkbox_group') {
                 widgetCurrentValue = currentValues; // Pass full map for checkbox_group
             } else {
                 widgetCurrentValue = currentValues[widget.command] !== undefined
                     ? currentValues[widget.command]
-                    : widget.default;
+                    : resolvedWidget.default;
             }
 
-            const widgetContent = this.createWidget(widget, widgetCurrentValue, (cmd, val) => {
+            const widgetContent = this.createWidget(resolvedWidget, widgetCurrentValue, (cmd, val) => {
                 onValueChange(cmd, val, container);
             });
             container.appendChild(widgetContent);
 
             widgetsArea.appendChild(container);
+
+            // If widget has dynamic parameters, set up listener for parameter changes
+            if (widget.parameterCommand && widget.parameterVariations) {
+                const listeners = [];
+                
+                // Create a function that will update the widget when parameter changes
+                const updateWidgetVariation = () => {
+                    const newResolvedWidget = this.resolveWidgetVariation(widget, currentValues);
+                    
+                    // Only rebuild if configuration actually changed
+                    if (JSON.stringify(this.resolveWidgetVariation(widget, currentValues)) !== 
+                        JSON.stringify(resolvedWidget)) {
+                        
+                        // Update title if it changed
+                        if (newResolvedWidget.title !== resolvedWidget.title) {
+                            titleRow.querySelector('.widget-title').textContent = newResolvedWidget.title;
+                        }
+
+                        // Update help if it changed
+                        if (newResolvedWidget.help !== resolvedWidget.help) {
+                            const existingHelp = container.querySelector('.widget-help');
+                            if (existingHelp) {
+                                if (newResolvedWidget.help) {
+                                    existingHelp.textContent = newResolvedWidget.help;
+                                } else {
+                                    existingHelp.remove();
+                                }
+                            } else if (newResolvedWidget.help) {
+                                const help = document.createElement('div');
+                                help.className = 'widget-help';
+                                help.textContent = newResolvedWidget.help;
+                                container.insertBefore(help, container.lastChild);
+                            }
+                        }
+
+                        // If widget type or critical parameters changed, rebuild the widget
+                        if (newResolvedWidget.type !== resolvedWidget.type || 
+                            JSON.stringify({min: newResolvedWidget.min, max: newResolvedWidget.max, step: newResolvedWidget.step}) 
+                            !== JSON.stringify({min: resolvedWidget.min, max: resolvedWidget.max, step: resolvedWidget.step})) {
+                            
+                            const oldWidgetContent = container.querySelector(`.widget-${resolvedWidget.type}`);
+                            if (oldWidgetContent) {
+                                const newWidgetContent = this.createWidget(newResolvedWidget, widgetCurrentValue, (cmd, val) => {
+                                    onValueChange(cmd, val, container);
+                                });
+                                oldWidgetContent.replaceWith(newWidgetContent);
+                            }
+                        }
+                    }
+                };
+
+                // Listen to changes on the parameter command
+                if (window.ecuManager && window.ecuManager.subscribeToValueChange) {
+                    window.ecuManager.subscribeToValueChange(widget.parameterCommand, (newValue) => {
+                        currentValues[widget.parameterCommand] = newValue;
+                        updateWidgetVariation();
+                    });
+
+                    listeners.push({
+                        command: widget.parameterCommand,
+                        callback: updateWidgetVariation
+                    });
+                }
+
+                this.dynamicWidgetInstances.set(instanceId, {
+                    container,
+                    widget,
+                    listeners,
+                    resolvedWidget
+                });
+            }
         });
     }
 

@@ -8,6 +8,9 @@ class ECUManager {
         this.screenModified = false;
         this.savedValues = {};
         this._valueNormalizer = this._normalizeValue.bind(this);
+        // Value change listeners for dynamic widgets
+        this._valueChangeListeners = new Map(); // command -> [callbacks]
+        this.linkedRadioGroups = {};
     }
 
     _normalizeValue(v) {
@@ -341,6 +344,9 @@ class ECUManager {
         const normalized = this._normalizeValue(value);
         this.currentValues[command] = normalized;
 
+        // Notify all dynamic widget listeners about this value change
+        this._notifyValueChangeListeners(command, normalized);
+
         // Compare normalized saved value vs normalized incoming
         const saved = this.savedValues.hasOwnProperty(command) ? this.savedValues[command] : undefined;
         if (saved !== undefined) {
@@ -602,6 +608,53 @@ class ECUManager {
                     }
                 }
                 this.goHome();
+            });
+        }
+    }
+
+    /**
+     * Subscribe to value changes for a specific command.
+     * Used by dynamic widgets to react to parameter changes.
+     * @param {string} command - The command to listen for
+     * @param {Function} callback - Callback(newValue) to invoke when value changes
+     */
+    subscribeToValueChange(command, callback) {
+        if (!this._valueChangeListeners.has(command)) {
+            this._valueChangeListeners.set(command, []);
+        }
+        this._valueChangeListeners.get(command).push(callback);
+    }
+
+    /**
+     * Unsubscribe from value changes.
+     * @param {string} command - The command to stop listening for
+     * @param {Function} callback - The exact callback function to remove
+     */
+    unsubscribeFromValueChange(command, callback) {
+        if (this._valueChangeListeners.has(command)) {
+            const callbacks = this._valueChangeListeners.get(command);
+            const index = callbacks.indexOf(callback);
+            if (index > -1) {
+                callbacks.splice(index, 1);
+            }
+        }
+    }
+
+    /**
+     * Notify all listeners about a value change.
+     * Called internally when a value changes.
+     * @param {string} command - The command that changed
+     * @param {*} value - The new value
+     */
+    _notifyValueChangeListeners(command, value) {
+        if (this._valueChangeListeners.has(command)) {
+            const callbacks = this._valueChangeListeners.get(command);
+            callbacks.forEach(callback => {
+                try {
+                    callback(value);
+                } catch (error) {
+                    console.error(`Error in value change listener for ${command}:`, error);
+                }
             });
         }
     }

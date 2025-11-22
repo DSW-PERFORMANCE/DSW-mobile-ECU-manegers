@@ -18,7 +18,32 @@
               "min": 0,
               "max": 22,
               "default": 14,
-              "unit": "ms"
+              "unit": "ms",
+              "parameterCommand": "motor_type",
+              "defaultVariation": "1",
+              "parameterVariations": {
+                "1": {
+                  "title": "Tempo de Injeção (Motor 1 - Gasolina)",
+                  "min": 0,
+                  "max": 15,
+                  "default": 10,
+                  "help": "Calibração para motor a gasolina"
+                },
+                "2": {
+                  "title": "Tempo de Injeção (Motor 2 - Álcool)",
+                  "min": 0,
+                  "max": 22,
+                  "default": 14,
+                  "help": "Calibração para motor a álcool"
+                },
+                "3": {
+                  "title": "Tempo de Injeção (Motor 3 - Flex)",
+                  "min": 0,
+                  "max": 25,
+                  "default": 12,
+                  "help": "Calibração para motor flex fuel"
+                }
+              }
             },
             {
               "type": "spinbox",
@@ -29,7 +54,32 @@
               "max": 50,
               "default": 0,
               "step": 1,
-              "unit": "%"
+              "unit": "%",
+              "parameterCommand": "motor_type",
+              "defaultVariation": "1",
+              "parameterVariations": {
+                "1": {
+                  "title": "Correção de Combustível (Gasolina)",
+                  "min": -30,
+                  "max": 30,
+                  "step": 1,
+                  "help": "Faixa otimizada para gasolina"
+                },
+                "2": {
+                  "title": "Correção de Combustível (Álcool)",
+                  "min": -50,
+                  "max": 50,
+                  "step": 2,
+                  "help": "Faixa otimizada para álcool (maior variação)"
+                },
+                "3": {
+                  "title": "Correção de Combustível (Flex)",
+                  "min": -40,
+                  "max": 40,
+                  "step": 1,
+                  "help": "Faixa otimizada para flex fuel"
+                }
+              }
             },
             {
               "type": "toggle",
