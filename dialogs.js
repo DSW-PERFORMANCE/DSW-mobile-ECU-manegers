@@ -318,6 +318,153 @@ class DialogManager {
     }
 
     /**
+     * Mostra um modal de seleção para ComboBox com busca
+     * Alta prioridade - show de bola!
+     * @param {object} widget - Configuração do widget ComboBox
+     * @param {any} currentValue - Valor atual selecionado
+     * @param {function} onSelected - Callback chamado quando usuário confirma seleção
+     * @returns {void}
+     */
+    showComboboxModal(widget, currentValue, onSelected) {
+        // Create modal overlay with high priority
+        const modalOverlay = document.createElement('div');
+        modalOverlay.className = 'combobox-modal-overlay';
+        modalOverlay.style.zIndex = '99999'; // Show de bola - máxima prioridade!
+
+        const modal = document.createElement('div');
+        modal.className = 'combobox-modal';
+
+        // Header
+        const header = document.createElement('div');
+        header.className = 'combobox-modal-header';
+        const title = document.createElement('h3');
+        title.textContent = widget.title || 'Selecione uma opção';
+        header.appendChild(title);
+
+        // Search box
+        const searchContainer = document.createElement('div');
+        searchContainer.className = 'combobox-search-container';
+        const searchInput = document.createElement('input');
+        searchInput.type = 'text';
+        searchInput.className = 'combobox-search-input';
+        searchInput.placeholder = 'Pesquisar...';
+        searchInput.setAttribute('aria-label', 'Pesquisar opções');
+        searchContainer.appendChild(searchInput);
+
+        // Options list
+        const optionsList = document.createElement('div');
+        optionsList.className = 'combobox-options-list';
+
+        // Track currently selected value in modal
+        let selectedInModal = currentValue;
+
+        // Populate options
+        const renderOptions = (filter = '') => {
+            optionsList.innerHTML = '';
+            const filtered = widget.options.filter(opt => 
+                opt.label.toLowerCase().includes(filter.toLowerCase())
+            );
+
+            if (filtered.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'combobox-empty-state';
+                empty.textContent = 'Nenhuma opção encontrada';
+                optionsList.appendChild(empty);
+                return;
+            }
+
+            filtered.forEach(option => {
+                const item = document.createElement('button');
+                item.type = 'button';
+                item.className = 'combobox-option-item';
+                // Mark as selected if it matches current modal selection
+                if (option.value == selectedInModal) {
+                    item.classList.add('selected');
+                }
+                item.textContent = option.label;
+                item.dataset.value = option.value;
+
+                item.addEventListener('click', () => {
+                    // Update selected value in modal
+                    selectedInModal = option.value;
+                    
+                    // Update visual selection
+                    optionsList.querySelectorAll('.combobox-option-item').forEach(btn => {
+                        btn.classList.remove('selected');
+                    });
+                    item.classList.add('selected');
+                });
+
+                optionsList.appendChild(item);
+            });
+        };
+
+        renderOptions();
+
+        // Search input event
+        searchInput.addEventListener('input', (e) => {
+            renderOptions(e.target.value);
+        });
+
+        // Footer with buttons
+        const footer = document.createElement('div');
+        footer.className = 'combobox-modal-footer';
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'btn-cancel';
+        cancelBtn.type = 'button';
+        cancelBtn.textContent = 'Cancelar';
+        cancelBtn.addEventListener('click', closeModal);
+
+        const applyBtn = document.createElement('button');
+        applyBtn.className = 'btn-apply';
+        applyBtn.type = 'button';
+        applyBtn.textContent = 'Aplicar';
+        
+        // Apply the selected value from modal
+        applyBtn.addEventListener('click', () => {
+            closeModal();
+            onSelected(selectedInModal);
+        });
+
+        footer.appendChild(cancelBtn);
+        footer.appendChild(applyBtn);
+
+        // Assemble modal
+        modal.appendChild(header);
+        modal.appendChild(searchContainer);
+        modal.appendChild(optionsList);
+        modal.appendChild(footer);
+
+        modalOverlay.appendChild(modal);
+        document.body.appendChild(modalOverlay);
+
+        // Focus on search input
+        searchInput.focus();
+
+        // Close modal function
+        const closeModal = () => {
+            modalOverlay.remove();
+        };
+
+        // Close on overlay click
+        modalOverlay.addEventListener('click', (e) => {
+            if (e.target === modalOverlay) {
+                closeModal();
+            }
+        });
+
+        // Close on Escape key
+        const escapeHandler = (e) => {
+            if (e.key === 'Escape') {
+                closeModal();
+                document.removeEventListener('keydown', escapeHandler);
+            }
+        };
+        document.addEventListener('keydown', escapeHandler);
+    }
+
+    /**
      * Mostra um diálogo de pausa/carregando (não pode ser fechado pelo usuário)
      * @param {string} title
      * @param {string} message

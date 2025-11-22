@@ -168,12 +168,16 @@ class ECUManager {
         }
         
         this.updateBreadcrumb();
+        
+        // RENDER WIDGETS FIRST (com valores padrão apenas)
         this.renderWidgets(widgets, breadcrumb);
 
+        // AGUARDE 44ms ANTES DE TENTAR CARREGAR VALORES
         setTimeout(() => {
             this.setupHomeButton();
+            // Agora, após 44ms, carrega os valores da ECU
             this.autoReloadCurrentScreen();
-        }, 0);
+        }, 44);
     }
 
     async autoReloadCurrentScreen() {
@@ -319,8 +323,7 @@ class ECUManager {
         const currentWidgets = window.widgetManager.getCurrentWidgets();
 
         if (currentWidgets.length === 0) {
-            window.ecuCommunication.showNotification('Nenhum widget para recarregar', 'warning');
-            return;
+            return; // Falha silenciosa se não houver widgets
         }
 
         const reloadedValues = await window.ecuCommunication.reloadCurrentScreen(currentWidgets);
