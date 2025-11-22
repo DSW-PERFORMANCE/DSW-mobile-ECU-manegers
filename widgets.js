@@ -770,13 +770,13 @@ class WidgetManager {
             // Export / Import buttons
             const exportBtn = document.createElement('button');
             exportBtn.className = 'export-btn';
-            exportBtn.title = 'Exportar configuração criptografada';
+            exportBtn.title = 'Exportar configuração';
             exportBtn.innerHTML = '<i class="bi bi-upload"></i>';
             exportBtn.id = 'exportBtnHeader';
 
             const importBtn = document.createElement('button');
             importBtn.className = 'import-btn';
-            importBtn.title = 'Importar configuração criptografada';
+            importBtn.title = 'Importar configuração';
             importBtn.innerHTML = '<i class="bi bi-download"></i>';
             importBtn.id = 'importBtnHeader';
 
