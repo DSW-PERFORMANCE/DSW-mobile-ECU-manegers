@@ -88,16 +88,6 @@
               "command": "bank_a_enable",
               "default": true
             }
-            ,
-            {
-              "type": "linked_radio",
-              "title": "Modo Mono (Vinculado)",
-              "help": "Opção 'Mono' do grupo vinculado inj_mode_group",
-              "command": "injection_mode",
-              "group": "inj_mode_group",
-              "value": "mono",
-              "default": "mono"
-            }
           ]
         },
         {
@@ -156,16 +146,6 @@
               "max": 40,
               "default": 15,
               "unit": "°"
-            }
-            ,
-            {
-              "type": "linked_radio",
-              "title": "Modo Direct (Vinculado)",
-              "help": "Opção 'Direct' do grupo vinculado inj_mode_group",
-              "command": "injection_mode",
-              "group": "inj_mode_group",
-              "value": "direct",
-              "default": "mono"
             }
           ]
         },
@@ -384,16 +364,6 @@
                   "valueOff": 0
                 }
               ]
-            }
-            ,
-            {
-              "type": "linked_radio",
-              "title": "Modo Multi (Vinculado)",
-              "description": "Opção 'Multi' do grupo vinculado inj_mode_group",
-              "command": "injection_mode",
-              "group": "inj_mode_group",
-              "value": "multi",
-              "default": "mono"
             }
           ]
         }

@@ -10,7 +10,6 @@ class ECUManager {
         this._valueNormalizer = this._normalizeValue.bind(this);
         // Value change listeners for dynamic widgets
         this._valueChangeListeners = new Map(); // command -> [callbacks]
-        this.linkedRadioGroups = {};
     }
 
     _normalizeValue(v) {
@@ -42,87 +41,8 @@ class ECUManager {
         try {
             const response = await fetch('su.json');
             this.config = await response.json();
-            // Validate linked_radio groups across the entire config
-            this._validateLinkedRadios();
         } catch (error) {
             console.error('Erro ao carregar configuração:', error);
-        }
-    }
-
-    _validateLinkedRadios() {
-        if (!this.config || !Array.isArray(this.config.tree)) return;
-
-        const groups = {};
-
-        const traverse = (nodes, parentIdPath = []) => {
-            for (const node of nodes) {
-                const nodeId = node.id || null;
-                if (node.widgets && Array.isArray(node.widgets)) {
-                    node.widgets.forEach(widget => {
-                        if (widget.type === 'linked_radio') {
-                            const groupId = widget.group || widget.command || null;
-                            if (!groupId) return;
-                            groups[groupId] = groups[groupId] || [];
-                            groups[groupId].push({
-                                widget: widget,
-                                command: widget.command,
-                                nodeId: nodeId,
-                                nodePath: parentIdPath.concat(node.label || nodeId).join(' / ')
-                            });
-                        }
-                    });
-                }
-
-                if (node.children && node.children.length > 0) {
-                    traverse(node.children, parentIdPath.concat(node.label || node.id));
-                }
-            }
-        };
-
-        traverse(this.config.tree);
-
-        // Expose groups map for runtime use (linked radio behavior)
-        this.linkedRadioGroups = groups;
-
-        // Now validate each group
-        for (const [groupId, members] of Object.entries(groups)) {
-            // Count validation
-            if (members.length < 2 || members.length > 4) {
-                const msg = `linked_radio group '${groupId}' must have between 2 and 4 members (found ${members.length}).`;
-                console.error(msg, members);
-                if (window.notificationManager) window.notificationManager.error(msg);
-            }
-
-            // Command equality validation
-            const commands = new Set(members.map(m => String(m.command)));
-            if (commands.size > 1) {
-                const msg = `linked_radio group '${groupId}' members must share the same 'command'. Found different commands: ${[...commands].join(', ')}.`;
-                console.error(msg, members);
-                if (window.notificationManager) window.notificationManager.error(msg);
-            }
-
-            // Allow members to be placed in the same node, but limit to maximum 2 per node
-            const nodeCounts = members.reduce((acc, m) => {
-                const id = m.nodeId || '__root__';
-                acc[id] = (acc[id] || 0) + 1;
-                return acc;
-            }, {});
-
-            for (const [nodeId, cnt] of Object.entries(nodeCounts)) {
-                if (cnt > 2) {
-                    const msg = `linked_radio group '${groupId}' has ${cnt} members inside node '${nodeId}'. Maximum 2 members per node are allowed.`;
-                    console.error(msg, members.filter(m => (m.nodeId || '__root__') === nodeId));
-                    if (window.notificationManager) window.notificationManager.error(msg);
-                }
-            }
-            // Disallow defining multiple options inside a single linked_radio widget when intending cross-frame linking
-            members.forEach(m => {
-                if (m.widget && Array.isArray(m.widget.options) && m.widget.options.length > 1) {
-                    const msg = `linked_radio widget in node '${m.nodePath}' uses 'options' array. For cross-frame linking each linked_radio must be a single-option widget (use 'value').`;
-                    console.error(msg, m);
-                    if (window.notificationManager) window.notificationManager.error(msg);
-                }
-            });
         }
     }
 
