@@ -1,6 +1,8 @@
 document.addEventListener('DOMContentLoaded', () => {
     window.ecuManager.init();
-    window.ecuManager.updateStatus(false);
+    if (window.ecuCommunication) {
+        window.ecuCommunication.setStatus(false);
+    }
 
     // Install global keyboard shortcuts for undo/redo
     document.addEventListener('keydown', (ev) => {

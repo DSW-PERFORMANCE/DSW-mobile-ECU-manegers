@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Diagnóstico - DSW ECU Manager</title>
+    <style>
+        body {
+            font-family: monospace;
+            background: #1a1a1a;
+            color: #00ff00;
+            padding: 20px;
+            margin: 0;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: #0a0a0a;
+            padding: 20px;
+            border-radius: 6px;
+            border: 1px solid #333;
+        }
+        h1 { color: #ff6b6b; }
+        .check {
+            margin: 10px 0;
+            padding: 10px;
+            border-left: 3px solid #00ff00;
+            background: rgba(0, 255, 0, 0.05);
+        }
+        .check.fail {
+            border-left-color: #ff0000;
+            background: rgba(255, 0, 0, 0.05);
+            color: #ff6b6b;
+        }
+        .check.ok { color: #00ff00; }
+        button {
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #ff5252; }
+        #output {
+            background: #000;
+            border: 1px solid #333;
+            padding: 10px;
+            margin-top: 20px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Diagnóstico - DSW ECU Manager</h1>
+        
+        <div id="diagnostics"></div>
+        
+        <div style="margin-top: 20px;">
+            <button onclick="runTest('status')">Testar Status</button>
+            <button onclick="runTest('sendCommand')">Testar Envio de Comando</button>
+            <button onclick="runTest('widgets')">Testar Widgets</button>
+            <button onclick="runTest('full')">Teste Completo</button>
+        </div>
+        
+        <div id="output"></div>
+    </div>
+
+    <script src="notifications.js"></script>
+    <script src="dialogs.js"></script>
+    <script src="history.js"></script>
+    <script src="table3d-controller.js"></script>
+    <script src="widgets.js"></script>
+    <script src="ecu-communication.js"></script>
+    <script src="ecu-manager.js"></script>
+
+    <script>
+        function log(msg) {
+            const output = document.getElementById('output');
+            output.innerHTML += msg + '\n';
+            output.scrollTop = output.scrollHeight;
+        }
+
+        function addCheck(name, ok, msg = '') {
+            const diag = document.getElementById('diagnostics');
+            const div = document.createElement('div');
+            div.className = 'check ' + (ok ? 'ok' : 'fail');
+            div.textContent = (ok ? '✓' : '✗') + ' ' + name + (msg ? ': ' + msg : '');
+            diag.appendChild(div);
+        }
+
+        window.addEventListener('load', () => {
+            // Diagnósticos iniciais
+            addCheck('window.ecuCommunication', !!window.ecuCommunication, 
+                window.ecuCommunication ? 'isOnline=' + window.ecuCommunication.isOnline : 'undefined');
+            addCheck('window.ecuManager', !!window.ecuManager, 
+                window.ecuManager ? 'config=' + (window.ecuManager.config ? 'loaded' : 'null') : 'undefined');
+            addCheck('window.widgetManager', !!window.widgetManager, 'instance exists');
+            addCheck('window.notificationManager', !!window.notificationManager, 'instance exists');
+            addCheck('window.dialogManager', !!window.dialogManager, 'instance exists');
+            
+            const statusBadge = document.getElementById('statusBadge');
+            addCheck('statusBadge element', !!statusBadge, statusBadge ? statusBadge.textContent : 'not found');
+        });
+
+        async function runTest(type) {
+            document.getElementById('output').innerHTML = '';
+            log('=== INICIANDO TESTE: ' + type.toUpperCase() + ' ===\n');
+
+            if (type === 'status' || type === 'full') {
+                log('1. Verificando status atual:');
+                log('   isOnline: ' + window.ecuCommunication.isOnline);
+                log('   Badge: ' + document.getElementById('statusBadge').textContent + '\n');
+
+                log('2. Mudando status para false:');
+                window.ecuCommunication.setStatus(false);
+                log('   isOnline: ' + window.ecuCommunication.isOnline);
+                log('   Badge: ' + document.getElementById('statusBadge').textContent + '\n');
+
+                log('3. Mudando status para true:');
+                window.ecuCommunication.setStatus(true);
+                log('   isOnline: ' + window.ecuCommunication.isOnline);
+                log('   Badge: ' + document.getElementById('statusBadge').textContent + '\n');
+            }
+
+            if (type === 'sendCommand' || type === 'full') {
+                log('4. Testando envio de comando (online):');
+                const result1 = await window.ecuCommunication.sendCommand('test_cmd', 'value1');
+                log('   Resultado: ' + result1 + '\n');
+
+                log('5. Testando envio de comando (offline):');
+                window.ecuCommunication.setStatus(false);
+                const result2 = await window.ecuCommunication.sendCommand('test_cmd', 'value2');
+                log('   Resultado: ' + result2 + '\n');
+                window.ecuCommunication.setStatus(true);
+            }
+
+            if (type === 'widgets' || type === 'full') {
+                log('6. Verificando widgets:');
+                const widgets = window.widgetManager?.getCurrentWidgets() || [];
+                log('   Total de widgets: ' + widgets.length + '\n');
+                
+                log('7. Testando saveCurrentScreen:');
+                if (widgets.length > 0) {
+                    const currentValues = window.ecuManager?.currentValues || {};
+                    const result = await window.ecuCommunication.saveCurrentScreen(widgets, currentValues);
+                    log('   Resultado: ' + result + '\n');
+                } else {
+                    log('   Nenhum widget disponível\n');
+                }
+            }
+
+            log('=== TESTE CONCLUÍDO ===');
+        }
+    </script>
+</body>
+</html>

@@ -123,13 +123,10 @@ class DialogManager {
         return this.show(title, message, 'retry');
     }
 
-    /**
-     * Mostra um diálogo de informação (apenas botão OK)
-     * @param {string} title
-     * @param {string} message
-     * @param {string} icon (opcional)
-     * @returns {Promise<void>}
-     */
+    async error(title, message) {
+        return this.info(title, message, 'bi-exclamation-circle-fill');
+    }
+
     async info(title, message, icon = 'bi-info-circle-fill') {
         return new Promise((resolve) => {
             const container = document.getElementById('dialogContainer');
@@ -174,13 +171,6 @@ class DialogManager {
         });
     }
 
-    /**
-     * Mostra um diálogo para pedir um ou mais valores
-     * @param {string} title
-     * @param {Array<{label:string, type:string, default:any, min?:number, max?:number, icon?:string, validate?:function}>} fields
-     * @param {string} icon (opcional)
-     * @returns {Promise<object|null>} Retorna objeto com valores ou null se cancelado
-     */
     async promptValues(title, fields, icon = 'bi-currency-dollar') {
         return new Promise((resolve) => {
             const container = document.getElementById('dialogContainer');
@@ -275,7 +265,6 @@ class DialogManager {
             okBtn.textContent = 'OK';
             okBtn.addEventListener('click', (e) => {
                 e.preventDefault();
-                // Validação dos campos
                 let valid = true;
                 const values = {};
                 inputs.forEach(({ input, field }) => {
@@ -317,13 +306,127 @@ class DialogManager {
         });
     }
 
-    /**
-     * Mostra um diálogo de pausa/carregando (não pode ser fechado pelo usuário)
-     * @param {string} title
-     * @param {string} message
-     * @param {string} icon (opcional)
-     * @returns {function} Retorna função para fechar o diálogo
-     */
+    showComboboxModal(widget, currentValue, onSelected) {
+        const modalOverlay = document.createElement('div');
+        modalOverlay.className = 'combobox-modal-overlay';
+        modalOverlay.style.zIndex = '99999';
+
+        const modal = document.createElement('div');
+        modal.className = 'combobox-modal';
+
+        const header = document.createElement('div');
+        header.className = 'combobox-modal-header';
+        const title = document.createElement('h3');
+        title.textContent = widget.title || 'Selecione uma opção';
+        header.appendChild(title);
+
+        const searchContainer = document.createElement('div');
+        searchContainer.className = 'combobox-search-container';
+        const searchInput = document.createElement('input');
+        searchInput.type = 'text';
+        searchInput.className = 'combobox-search-input';
+        searchInput.placeholder = 'Pesquisar...';
+        searchInput.setAttribute('aria-label', 'Pesquisar opções');
+        searchContainer.appendChild(searchInput);
+
+        const optionsList = document.createElement('div');
+        optionsList.className = 'combobox-options-list';
+
+        let selectedInModal = currentValue;
+
+        const renderOptions = (filter = '') => {
+            optionsList.innerHTML = '';
+            const filtered = widget.options.filter(opt => 
+                opt.label.toLowerCase().includes(filter.toLowerCase())
+            );
+
+            if (filtered.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'combobox-empty-state';
+                empty.textContent = 'Nenhuma opção encontrada';
+                optionsList.appendChild(empty);
+                return;
+            }
+
+            filtered.forEach(option => {
+                const item = document.createElement('button');
+                item.type = 'button';
+                item.className = 'combobox-option-item';
+                if (option.value == selectedInModal) {
+                    item.classList.add('selected');
+                }
+                item.textContent = option.label;
+                item.dataset.value = option.value;
+
+                item.addEventListener('click', () => {
+                    selectedInModal = option.value;
+                    optionsList.querySelectorAll('.combobox-option-item').forEach(btn => {
+                        btn.classList.remove('selected');
+                    });
+                    item.classList.add('selected');
+                });
+
+                optionsList.appendChild(item);
+            });
+        };
+
+        renderOptions();
+
+        searchInput.addEventListener('input', (e) => {
+            renderOptions(e.target.value);
+        });
+
+        const footer = document.createElement('div');
+        footer.className = 'combobox-modal-footer';
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'btn-cancel';
+        cancelBtn.type = 'button';
+        cancelBtn.textContent = 'Cancelar';
+        cancelBtn.addEventListener('click', closeModal);
+
+        const applyBtn = document.createElement('button');
+        applyBtn.className = 'btn-apply';
+        applyBtn.type = 'button';
+        applyBtn.textContent = 'Aplicar';
+        
+        applyBtn.addEventListener('click', () => {
+            closeModal();
+            onSelected(selectedInModal);
+        });
+
+        footer.appendChild(cancelBtn);
+        footer.appendChild(applyBtn);
+
+        modal.appendChild(header);
+        modal.appendChild(searchContainer);
+        modal.appendChild(optionsList);
+        modal.appendChild(footer);
+
+        modalOverlay.appendChild(modal);
+        document.body.appendChild(modalOverlay);
+
+        searchInput.focus();
+
+        const closeModal = () => {
+            modalOverlay.remove();
+        };
+
+        modalOverlay.addEventListener('click', (e) => {
+            if (e.target === modalOverlay) {
+                closeModal();
+            }
+        });
+
+        const escapeHandler = (e) => {
+            if (e.key === 'Escape') {
+                closeModal();
+                document.removeEventListener('keydown', escapeHandler);
+            }
+        };
+        document.addEventListener('keydown', escapeHandler);
+    }
+
     showPause(title, message, icon = 'bi-arrow-repeat') {
         const container = document.getElementById('dialogContainer');
         const backdrop = document.createElement('div');
@@ -351,7 +454,6 @@ class DialogManager {
         container.appendChild(backdrop);
         setTimeout(() => backdrop.classList.add('show'), 10);
 
-        // Adiciona animação CSS para girar
         if (!document.getElementById('dialog-spin-style')) {
             const style = document.createElement('style');
             style.id = 'dialog-spin-style';
@@ -359,11 +461,146 @@ class DialogManager {
             document.head.appendChild(style);
         }
 
-        // Retorna função para fechar
         return () => {
             backdrop.classList.remove('show');
             setTimeout(() => backdrop.remove(), 300);
         };
+    }
+
+    showCustomDialog(title, contentElement, onOk) {
+        return new Promise((resolve) => {
+            const container = document.getElementById('dialogContainer');
+            const backdrop = document.createElement('div');
+            backdrop.className = 'dialog-backdrop';
+
+            const dialog = document.createElement('div');
+            dialog.className = 'dialog';
+
+            const content = document.createElement('div');
+            content.className = 'dialog-content';
+
+            const titleEl = document.createElement('div');
+            titleEl.className = 'dialog-title';
+            titleEl.textContent = title;
+
+            const bodyEl = document.createElement('div');
+            bodyEl.className = 'dialog-body';
+            bodyEl.style.padding = '15px 0';
+            bodyEl.appendChild(contentElement);
+
+            const actions = document.createElement('div');
+            actions.className = 'dialog-actions';
+
+            const cleanup = () => {
+                backdrop.classList.remove('show');
+                setTimeout(() => backdrop.remove(), 300);
+            };
+
+            const cancelBtn = document.createElement('button');
+            cancelBtn.className = 'dialog-btn dialog-btn-cancel';
+            cancelBtn.textContent = 'Cancelar';
+            cancelBtn.addEventListener('click', () => {
+                cleanup();
+                resolve(false);
+            });
+
+            const okBtn = document.createElement('button');
+            okBtn.className = 'dialog-btn dialog-btn-ok';
+            okBtn.textContent = 'OK';
+            okBtn.addEventListener('click', () => {
+                onOk();
+                cleanup();
+                resolve(true);
+            });
+
+            actions.appendChild(cancelBtn);
+            actions.appendChild(okBtn);
+
+            content.appendChild(titleEl);
+            content.appendChild(bodyEl);
+            content.appendChild(actions);
+
+            dialog.appendChild(content);
+            backdrop.appendChild(dialog);
+            container.appendChild(backdrop);
+
+            setTimeout(() => backdrop.classList.add('show'), 10);
+        });
+    }
+
+    editNumberValue(title, value, min, max, step, unit, onConfirm) {
+        return new Promise((resolve) => {
+            const container = document.getElementById('dialogContainer');
+            const backdrop = document.createElement('div');
+            backdrop.className = 'dialog-backdrop';
+
+            const dialog = document.createElement('div');
+            dialog.className = 'dialog';
+
+            const content = document.createElement('div');
+            content.className = 'dialog-content';
+
+            const titleEl = document.createElement('div');
+            titleEl.className = 'dialog-title';
+            titleEl.textContent = title;
+
+            const bodyEl = document.createElement('div');
+            bodyEl.style.padding = '15px 0';
+            bodyEl.innerHTML = `
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <input type="number" id="number-input" value="${value}" min="${min}" max="${max}" step="${step}" 
+                           style="flex: 1; padding: 8px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); 
+                                  color: white; border-radius: 4px; font-size: 14px;">
+                    <span style="color: #999; min-width: 40px;">${unit}</span>
+                </div>
+            `;
+
+            const actions = document.createElement('div');
+            actions.className = 'dialog-actions';
+
+            const cleanup = () => {
+                backdrop.classList.remove('show');
+                setTimeout(() => backdrop.remove(), 300);
+            };
+
+            const cancelBtn = document.createElement('button');
+            cancelBtn.className = 'dialog-btn dialog-btn-cancel';
+            cancelBtn.textContent = 'Cancelar';
+            cancelBtn.addEventListener('click', () => {
+                cleanup();
+                resolve(false);
+            });
+
+            const okBtn = document.createElement('button');
+            okBtn.className = 'dialog-btn dialog-btn-ok';
+            okBtn.textContent = 'OK';
+            okBtn.addEventListener('click', () => {
+                const input = document.getElementById('number-input');
+                const newValue = parseFloat(input.value);
+                if (!isNaN(newValue)) {
+                    onConfirm(newValue);
+                }
+                cleanup();
+                resolve(true);
+            });
+
+            actions.appendChild(cancelBtn);
+            actions.appendChild(okBtn);
+
+            content.appendChild(titleEl);
+            content.appendChild(bodyEl);
+            content.appendChild(actions);
+
+            dialog.appendChild(content);
+            backdrop.appendChild(dialog);
+            container.appendChild(backdrop);
+
+            setTimeout(() => {
+                backdrop.classList.add('show');
+                document.getElementById('number-input').focus();
+                document.getElementById('number-input').select();
+            }, 10);
+        });
     }
 }
 

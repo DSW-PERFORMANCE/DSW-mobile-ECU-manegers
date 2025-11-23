@@ -31,9 +31,12 @@ class ECUManager {
         await this.loadConfig();
         this.setupEventListeners();
         this.renderTree();
-        window.ecuCommunication.setConfig(this.config);
-        window.ecuCommunication.setStatus(false);
-        this.currentValues = window.ecuCommunication.getAllDefaultValues();
+        if (window.ecuCommunication) {
+            window.ecuCommunication.setConfig(this.config);
+            // Tentar conectar automaticamente (em modo simulação, sempre online)
+            window.ecuCommunication.setStatus(true);
+            this.currentValues = window.ecuCommunication.getAllDefaultValues();
+        }
         await this.autoReloadOnStartup();
     }
 
@@ -191,6 +194,7 @@ class ECUManager {
     }
 
     async autoReloadCurrentScreen() {
+        if (!window.ecuCommunication || !window.widgetManager) return;
         const currentWidgets = window.widgetManager.getCurrentWidgets();
         if (currentWidgets.length === 0) return;
 
@@ -309,6 +313,7 @@ class ECUManager {
     }
 
     async saveCurrentScreen() {
+        if (!window.ecuCommunication || !window.widgetManager) return;
         const currentWidgets = window.widgetManager.getCurrentWidgets();
 
         if (currentWidgets.length === 0) {
@@ -330,6 +335,7 @@ class ECUManager {
     }
 
     async reloadCurrentScreen() {
+        if (!window.ecuCommunication || !window.widgetManager) return;
         const currentWidgets = window.widgetManager.getCurrentWidgets();
 
         if (currentWidgets.length === 0) {
