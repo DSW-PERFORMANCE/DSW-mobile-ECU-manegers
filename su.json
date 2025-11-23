@@ -410,7 +410,19 @@
               "unit": "%",
               "colorMode": "heat",
               "xLabel": "Fator de Ajuste",
-              "yLabel": "RPM"
+              "yLabel": "RPM",
+              "xAxis": {
+                "enabled": true,
+                "min": 0,
+                "max": 100,
+                "command": "table_rpm_corr_x_axis"
+              },
+              "yAxis": {
+                "enabled": true,
+                "min": 1000,
+                "max": 7000,
+                "command": "table_rpm_corr_y_axis"
+              }
             }
           ]
         },
@@ -453,7 +465,19 @@
               "unit": "kPa",
               "colorMode": "heat",
               "xLabel": "TPS (%)",
-              "yLabel": "RPM (x100)"
+              "yLabel": "RPM (x100)",
+              "xAxis": {
+                "enabled": true,
+                "min": 0,
+                "max": 100,
+                "command": "map_load_x_axis"
+              },
+              "yAxis": {
+                "enabled": true,
+                "min": 1000,
+                "max": 8000,
+                "command": "map_load_y_axis"
+              }
             }
           ]
         }

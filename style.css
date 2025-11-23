@@ -2005,3 +2005,78 @@ input[type="number"]:focus {
     display: none;
     white-space: nowrap;
 }
+
+/* Table3D Axis Labels */
+.table3d-axis-labels {
+    display: flex;
+    gap: 15px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+    padding: 8px;
+    background-color: rgba(255, 255, 255, 0.02);
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.table3d-axis-label-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 250px;
+}
+
+.btn-edit-axes {
+    background-color: #4a6a5a;
+    color: white;
+    border: 1px solid #5a8a7a;
+    padding: 8px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.btn-edit-axes:hover {
+    background-color: #5a8a7a;
+    border-color: #6aaa9a;
+    transform: translateY(-1px);
+}
+
+.btn-edit-axes:active {
+    background-color: #3a5a4a;
+    transform: translateY(0);
+}
+
+.btn-edit-axes:disabled {
+    background-color: #2a3a3a;
+    border-color: #3a4a4a;
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+/* Axis Labels Lateral */
+.table3d-y-axis-label {
+    font-size: 13px;
+    font-weight: bold;
+    color: #888;
+    padding: 0 5px;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 30px;
+}
+
+.table3d-x-axis-label {
+    text-align: center;
+    color: #888;
+    font-size: 13px;
+    font-weight: bold;
+    padding: 5px 0;
+    white-space: nowrap;
+}

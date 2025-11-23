@@ -27,6 +27,12 @@ class Table3DController {
         this.unit = widget.unit || '';
         this.colorMode = widget.colorMode || 'gradient'; // gradient, heat, cool
         
+        // Eixos editáveis (opcional)
+        this.xAxis = widget.xAxis || null; // {min, max, command, enabled}
+        this.yAxis = widget.yAxis || null; // {min, max, command, enabled}
+        this.xAxisValues = [];
+        this.yAxisValues = [];
+        
         // Agora sim, fazer parseData com this.min já definido
         this.data = this.parseData(currentValue, widget);
     }
@@ -145,13 +151,106 @@ class Table3DController {
     }
 
     /**
+     * Inicializa valores dos eixos (pull automático)
+     */
+    initializeAxes(currentValue) {
+        // X Axis
+        if (this.xAxis && this.xAxis.enabled) {
+            const xMin = this.xAxis.min || 0;
+            const xMax = this.xAxis.max || 100;
+            const xStep = (xMax - xMin) / (this.cols - 1);
+            this.xAxisValues = [];
+            for (let i = 0; i < this.cols; i++) {
+                this.xAxisValues.push(xMin + i * xStep);
+            }
+            
+            // Pull automático se comando existir
+            if (this.xAxis.command && currentValue && currentValue[this.xAxis.command]) {
+                try {
+                    const values = currentValue[this.xAxis.command].split(',').map(v => parseFloat(v.trim()));
+                    if (values.length === this.cols) {
+                        this.xAxisValues = values;
+                    }
+                } catch (e) {
+                    console.warn('Erro ao fazer pull do eixo X:', e);
+                }
+            }
+        }
+        
+        // Y Axis
+        if (this.yAxis && this.yAxis.enabled) {
+            const yMin = this.yAxis.min || 0;
+            const yMax = this.yAxis.max || 100;
+            const yStep = (yMax - yMin) / (this.rows - 1);
+            this.yAxisValues = [];
+            for (let i = 0; i < this.rows; i++) {
+                this.yAxisValues.push(yMin + i * yStep);
+            }
+            
+            // Pull automático se comando existir
+            if (this.yAxis.command && currentValue && currentValue[this.yAxis.command]) {
+                try {
+                    const values = currentValue[this.yAxis.command].split(',').map(v => parseFloat(v.trim()));
+                    if (values.length === this.rows) {
+                        this.yAxisValues = values;
+                    }
+                } catch (e) {
+                    console.warn('Erro ao fazer pull do eixo Y:', e);
+                }
+            }
+        }
+    }
+
+    /**
      * Cria o elemento da tabela
      */
     create() {
+        // Inicializar eixos
+        this.initializeAxes(this.widget.currentValue || {});
+        
         this.container = document.createElement('div');
         this.container.className = 'widget-table3d';
 
-        // Container com scroll horizontal/vertical
+        // Container principal (flex para acomodar labels laterais)
+        const mainWrapper = document.createElement('div');
+        mainWrapper.style.display = 'flex';
+        mainWrapper.style.gap = '0';
+
+        // Label vertical do eixo Y (esquerda)
+        if (this.yAxis && this.yAxis.enabled) {
+            const yLabelWrapper = document.createElement('div');
+            yLabelWrapper.className = 'table3d-y-axis-label';
+            yLabelWrapper.style.display = 'flex';
+            yLabelWrapper.style.alignItems = 'center';
+            yLabelWrapper.style.padding = '0 5px';
+            yLabelWrapper.style.writingMode = 'vertical-rl';
+            yLabelWrapper.style.textOrientation = 'mixed';
+            yLabelWrapper.style.color = '#888';
+            yLabelWrapper.style.fontSize = '12px';
+            yLabelWrapper.style.fontWeight = 'bold';
+            yLabelWrapper.textContent = `← ${this.yLabel} →`;
+            mainWrapper.appendChild(yLabelWrapper);
+        }
+
+        // Container com scroll horizontal/vertical + label X no topo
+        const tableWrapper = document.createElement('div');
+        tableWrapper.style.display = 'flex';
+        tableWrapper.style.flexDirection = 'column';
+        tableWrapper.style.flex = '1';
+
+        // Label horizontal do eixo X (topo)
+        if (this.xAxis && this.xAxis.enabled) {
+            const xLabelWrapper = document.createElement('div');
+            xLabelWrapper.className = 'table3d-x-axis-label';
+            xLabelWrapper.style.textAlign = 'center';
+            xLabelWrapper.style.color = '#888';
+            xLabelWrapper.style.fontSize = '12px';
+            xLabelWrapper.style.fontWeight = 'bold';
+            xLabelWrapper.style.padding = '5px 0';
+            xLabelWrapper.textContent = `↓ ${this.xLabel} ↓`;
+            tableWrapper.appendChild(xLabelWrapper);
+        }
+
         const scrollContainer = document.createElement('div');
         scrollContainer.className = 'table3d-scroll-container';
 
@@ -169,14 +268,21 @@ class Table3DController {
         // Canto superior esquerdo (vazio para alinhamento)
         const cornerCell = document.createElement('div');
         cornerCell.className = 'table3d-corner-cell';
-        cornerCell.textContent = 'Idx';
+        cornerCell.textContent = '';
         headerRow.appendChild(cornerCell);
 
-        // Labels das colunas
+        // Labels das colunas (valores do eixo X se disponível)
         for (let col = 0; col < this.cols; col++) {
             const headerCell = document.createElement('div');
             headerCell.className = 'table3d-header-cell';
-            headerCell.textContent = col;
+            
+            // Mostrar valor do eixo X se disponível, senão índice
+            if (this.xAxis && this.xAxis.enabled && this.xAxisValues.length > 0) {
+                const value = this.xAxisValues[col];
+                headerCell.textContent = value.toFixed(1);
+            } else {
+                headerCell.textContent = col;
+            }
             headerRow.appendChild(headerCell);
         }
         table.appendChild(headerRow);
@@ -186,10 +292,16 @@ class Table3DController {
             const rowDiv = document.createElement('div');
             rowDiv.className = 'table3d-row';
 
-            // Label da linha
+            // Label da linha (valores do eixo Y se disponível)
             const rowLabel = document.createElement('div');
             rowLabel.className = 'table3d-row-label';
-            rowLabel.textContent = row;
+            
+            if (this.yAxis && this.yAxis.enabled && this.yAxisValues.length > 0) {
+                const value = this.yAxisValues[row];
+                rowLabel.textContent = value.toFixed(1);
+            } else {
+                rowLabel.textContent = row;
+            }
             rowDiv.appendChild(rowLabel);
 
             // Células
@@ -244,7 +356,9 @@ class Table3DController {
         }
 
         scrollContainer.appendChild(table);
-        this.container.appendChild(scrollContainer);
+        tableWrapper.appendChild(scrollContainer);
+        mainWrapper.appendChild(tableWrapper);
+        this.container.appendChild(mainWrapper);
 
         // Events globais para drag
         document.addEventListener('mouseup', () => {
@@ -334,6 +448,19 @@ class Table3DController {
             }
         });
 
+        // Botão para editar eixos (apenas se houver eixos editáveis)
+        const hasEditableAxes = (this.xAxis && this.xAxis.enabled && this.xAxis.command) || 
+                                (this.yAxis && this.yAxis.enabled && this.yAxis.command);
+        
+        let editAxesBtn = null;
+        if (hasEditableAxes) {
+            editAxesBtn = document.createElement('button');
+            editAxesBtn.innerHTML = '<i class="bi bi-sliders"></i> Editar Eixos';
+            editAxesBtn.className = 'btn-table3d btn-edit-axes';
+            editAxesBtn.title = 'Editar intervalos dos eixos X e Y';
+            editAxesBtn.addEventListener('click', () => this.editAxesDialog());
+        }
+
         input.addEventListener('input', (e) => {
             if (this.selectedCell) {
                 this.updateCellValue(this.selectedCell.row, this.selectedCell.col, parseFloat(e.target.value));
@@ -344,12 +471,16 @@ class Table3DController {
         actionGroup.appendChild(interpolateVBtn);
         actionGroup.appendChild(interpolateDBtn);
         actionGroup.appendChild(mathBtn);
+        if (editAxesBtn) {
+            actionGroup.appendChild(editAxesBtn);
+        }
         
         // Guardar referências
         this.interpolateHBtn = interpolateHBtn;
         this.interpolateVBtn = interpolateVBtn;
         this.interpolateDBtn = interpolateDBtn;
         this.mathBtn = mathBtn;
+        this.editAxesBtn = editAxesBtn;
 
         controlsDiv.appendChild(inputGroup);
         controlsDiv.appendChild(actionGroup);
@@ -832,5 +963,137 @@ class Table3DController {
         if (window.globalHistoryManager) {
             window.globalHistoryManager.push(window.globalHistoryManager.createSnapshot());
         }
+    }
+
+    /**
+     * Atualiza displays dos eixos X e Y
+     */
+    updateAxisDisplays() {
+        if (this.xAxis && this.xAxis.enabled && this.xAxisValues.length > 0) {
+            const displayEl = document.getElementById('x-axis-display');
+            if (displayEl) {
+                const min = Math.min(...this.xAxisValues).toFixed(2);
+                const max = Math.max(...this.xAxisValues).toFixed(2);
+                displayEl.textContent = `${min} a ${max}`;
+            }
+        }
+        
+        if (this.yAxis && this.yAxis.enabled && this.yAxisValues.length > 0) {
+            const displayEl = document.getElementById('y-axis-display');
+            if (displayEl) {
+                const min = Math.min(...this.yAxisValues).toFixed(2);
+                const max = Math.max(...this.yAxisValues).toFixed(2);
+                displayEl.textContent = `${min} a ${max}`;
+            }
+        }
+    }
+
+    /**
+     * Abre diálogo para editar ambos os eixos (X e Y) de uma vez
+     */
+    editAxesDialog() {
+        if (!window.dialogManager || !window.dialogManager.promptValues) {
+            alert('Gerenciador de diálogos não disponível');
+            return;
+        }
+
+        const fields = [];
+
+        // Campo para Eixo X
+        if (this.xAxis && this.xAxis.enabled && this.xAxis.command) {
+            const currentMin = this.xAxisValues.length > 0 ? Math.min(...this.xAxisValues) : (this.xAxis.min || 0);
+            const currentMax = this.xAxisValues.length > 0 ? Math.max(...this.xAxisValues) : (this.xAxis.max || 100);
+
+            fields.push({
+                label: `Mínimo - Eixo X (${this.xLabel})`,
+                type: 'number',
+                default: currentMin,
+                icon: 'bi-arrow-down'
+            });
+
+            fields.push({
+                label: `Máximo - Eixo X (${this.xLabel})`,
+                type: 'number',
+                default: currentMax,
+                icon: 'bi-arrow-up'
+            });
+        }
+
+        // Campo para Eixo Y
+        if (this.yAxis && this.yAxis.enabled && this.yAxis.command) {
+            const currentMin = this.yAxisValues.length > 0 ? Math.min(...this.yAxisValues) : (this.yAxis.min || 0);
+            const currentMax = this.yAxisValues.length > 0 ? Math.max(...this.yAxisValues) : (this.yAxis.max || 100);
+
+            fields.push({
+                label: `Mínimo - Eixo Y (${this.yLabel})`,
+                type: 'number',
+                default: currentMin,
+                icon: 'bi-arrow-down'
+            });
+
+            fields.push({
+                label: `Máximo - Eixo Y (${this.yLabel})`,
+                type: 'number',
+                default: currentMax,
+                icon: 'bi-arrow-up'
+            });
+        }
+
+        if (fields.length === 0) return;
+
+        window.dialogManager.promptValues('Editar Eixos', fields, 'bi-sliders').then(values => {
+            if (values) {
+                let changed = false;
+
+                // Processar Eixo X
+                if (this.xAxis && this.xAxis.enabled && this.xAxis.command) {
+                    const xMinKey = `Mínimo - Eixo X (${this.xLabel})`;
+                    const xMaxKey = `Máximo - Eixo X (${this.xLabel})`;
+                    const newXMin = parseFloat(values[xMinKey]);
+                    const newXMax = parseFloat(values[xMaxKey]);
+
+                    if (!isNaN(newXMin) && !isNaN(newXMax) && newXMin < newXMax) {
+                        const newValues = [];
+                        const step = (newXMax - newXMin) / (this.cols - 1);
+                        for (let i = 0; i < this.cols; i++) {
+                            newValues.push(newXMin + i * step);
+                        }
+                        this.xAxisValues = newValues;
+
+                        const commandValues = newValues.map(v => v.toFixed(2)).join(',');
+                        this.onValueChange(this.xAxis.command, commandValues);
+                        changed = true;
+                    }
+                }
+
+                // Processar Eixo Y
+                if (this.yAxis && this.yAxis.enabled && this.yAxis.command) {
+                    const yMinKey = `Mínimo - Eixo Y (${this.yLabel})`;
+                    const yMaxKey = `Máximo - Eixo Y (${this.yLabel})`;
+                    const newYMin = parseFloat(values[yMinKey]);
+                    const newYMax = parseFloat(values[yMaxKey]);
+
+                    if (!isNaN(newYMin) && !isNaN(newYMax) && newYMin < newYMax) {
+                        const newValues = [];
+                        const step = (newYMax - newYMin) / (this.rows - 1);
+                        for (let i = 0; i < this.rows; i++) {
+                            newValues.push(newYMin + i * step);
+                        }
+                        this.yAxisValues = newValues;
+
+                        const commandValues = newValues.map(v => v.toFixed(2)).join(',');
+                        this.onValueChange(this.yAxis.command, commandValues);
+                        changed = true;
+                    }
+                }
+
+                if (changed) {
+                    this.updateAxisDisplays();
+                    if (window.notificationManager) {
+                        window.notificationManager.info('Eixos atualizados');
+                    }
+                }
+            }
+        });
     }
 }

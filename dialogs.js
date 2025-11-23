@@ -123,6 +123,10 @@ class DialogManager {
         return this.show(title, message, 'retry');
     }
 
+    async error(title, message) {
+        return this.info(title, message, 'bi-exclamation-circle-fill');
+    }
+
     async info(title, message, icon = 'bi-info-circle-fill') {
         return new Promise((resolve) => {
             const container = document.getElementById('dialogContainer');
