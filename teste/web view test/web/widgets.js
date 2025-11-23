@@ -9,6 +9,8 @@ class WidgetManager {
         // Map to track dynamic widgets and their parameter listeners
         this.dynamicWidgets = new Map(); // widgetId -> { parameterCommand, variations, listeners }
         this.dynamicWidgetInstances = new Map(); // widgetInstanceId -> { container, widget, listeners }
+        // Map to track table3d controllers for updating data
+        this.table3dControllers = new Map(); // command -> Table3DController
     }
 
     setCurrentWidgets(widgets) {
@@ -1351,7 +1353,41 @@ class WidgetManager {
         }
 
         const controller = new Table3DController(widget, valueMap, onValueChange);
+        
+        // Registra o controlador para atualizações futuras
+        if (widget.rowCommands && widget.rowCommands.length > 0) {
+            this.table3dControllers.set(widget.rowCommands[0], controller);
+        }
+        
         return controller.create();
+    }
+
+    /**
+     * Atualiza dados de table3d após recarregar valores da ECU
+     */
+    updateTable3DData(currentValues) {
+        for (const [key, controller] of this.table3dControllers) {
+            if (controller && controller.widget && controller.widget.rowCommands) {
+                // Reconstrói o mapa de valores
+                const valueMap = {};
+                for (const rowCmd of controller.widget.rowCommands) {
+                    valueMap[rowCmd] = currentValues[rowCmd];
+                }
+                
+                // Atualiza também os eixos
+                if (controller.widget.xAxis && controller.widget.xAxis.command) {
+                    valueMap[controller.widget.xAxis.command] = currentValues[controller.widget.xAxis.command];
+                }
+                if (controller.widget.yAxis && controller.widget.yAxis.command) {
+                    valueMap[controller.widget.yAxis.command] = currentValues[controller.widget.yAxis.command];
+                }
+                
+                // Chama o método de atualização do controller
+                if (controller.updateDataFromValues) {
+                    controller.updateDataFromValues(valueMap);
+                }
+            }
+        }
     }
 
     clearWidgets(widgetsArea) {

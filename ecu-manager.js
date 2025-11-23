@@ -348,6 +348,11 @@ class ECUManager {
         this.screenModified = false;
         this.updateBreadcrumb();
 
+        // Atualiza table3d widgets com novos dados
+        if (window.widgetManager) {
+            window.widgetManager.updateTable3DData(this.currentValues);
+        }
+
         if (this.currentNodeId) {
             const node = this.findNodeById(this.currentNodeId);
             if (node && node.widgets) {

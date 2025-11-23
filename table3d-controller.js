@@ -35,6 +35,12 @@ class Table3DController {
         
         // Agora sim, fazer parseData com this.min já definido
         this.data = this.parseData(currentValue, widget);
+        
+        // Debug: verificar dados recebidos
+        console.log(`[Table3D] Inicializado com ${this.rows}x${this.cols}`);
+        console.log(`[Table3D] rowCommands:`, this.rowCommands);
+        console.log(`[Table3D] Dados recebidos:`, currentValue);
+        console.log(`[Table3D] Dados parseados:`, this.data);
     }
 
     /**
@@ -959,10 +965,82 @@ class Table3DController {
             }
         }
 
+        // Também envia os eixos se houver
+        if (this.widget.xAxis && this.widget.xAxis.command && this.xAxisValues.length > 0) {
+            const xValues = this.xAxisValues.map(v => v.toFixed(2)).join(',');
+            this.onValueChange(this.widget.xAxis.command, xValues);
+        }
+        if (this.widget.yAxis && this.widget.yAxis.command && this.yAxisValues.length > 0) {
+            const yValues = this.yAxisValues.map(v => v.toFixed(2)).join(',');
+            this.onValueChange(this.widget.yAxis.command, yValues);
+        }
+
         // Atualiza histórico
         if (window.globalHistoryManager) {
             window.globalHistoryManager.push(window.globalHistoryManager.createSnapshot());
         }
+    }
+
+    /**
+     * Atualiza dados da tabela a partir de um mapa de valores
+     * Chamado após recarregar dados da ECU
+     */
+    updateDataFromValues(valueMap) {
+        if (!valueMap) return;
+        
+        console.log('[Table3D] Atualizando dados visuais...', valueMap);
+        
+        // Atualiza os dados da tabela
+        this.data = this.parseData(valueMap, this.widget);
+        
+        // Atualiza os eixos
+        if (this.widget.xAxis && this.widget.xAxis.command && valueMap[this.widget.xAxis.command]) {
+            const xStr = valueMap[this.widget.xAxis.command];
+            if (typeof xStr === 'string') {
+                this.xAxisValues = xStr.split(',').map(v => parseFloat(v.trim()) || 0);
+            }
+        }
+        if (this.widget.yAxis && this.widget.yAxis.command && valueMap[this.widget.yAxis.command]) {
+            const yStr = valueMap[this.widget.yAxis.command];
+            if (typeof yStr === 'string') {
+                this.yAxisValues = yStr.split(',').map(v => parseFloat(v.trim()) || 0);
+            }
+        }
+        
+        // Redesenha a tabela visualmente
+        this.redrawTable();
+        this.updateAxisDisplays();
+    }
+
+    /**
+     * Redesenha toda a tabela
+     */
+    redrawTable() {
+        if (!this.container) return;
+        
+        // Encontra o grid de células
+        const gridDiv = this.container.querySelector('.table3d-grid');
+        if (!gridDiv) return;
+        
+        // Reconstrói todas as células
+        gridDiv.innerHTML = '';
+        for (let row = 0; row < this.data.length; row++) {
+            for (let col = 0; col < this.data[row].length; col++) {
+                const cellElement = document.createElement('div');
+                cellElement.className = 'table3d-cell';
+                cellElement.id = `cell-${row}-${col}`;
+                
+                const value = this.data[row][col];
+                const color = this.getColorForValue(value);
+                
+                cellElement.style.backgroundColor = color;
+                cellElement.textContent = value.toFixed(1);
+                
+                gridDiv.appendChild(cellElement);
+            }
+        }
+        
+        console.log('[Table3D] Tabela redesenhada com sucesso!');
     }
 
     /**
