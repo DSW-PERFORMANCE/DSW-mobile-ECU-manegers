@@ -33,8 +33,7 @@ class ECUManager {
         this.renderTree();
         if (window.ecuCommunication) {
             window.ecuCommunication.setConfig(this.config);
-            // Tentar conectar automaticamente (em modo simulação, sempre online)
-            window.ecuCommunication.setStatus(true);
+            window.ecuCommunication.setStatus(false);
             this.currentValues = window.ecuCommunication.getAllDefaultValues();
         }
         await this.autoReloadOnStartup();
