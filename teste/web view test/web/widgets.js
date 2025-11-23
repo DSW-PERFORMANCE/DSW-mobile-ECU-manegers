@@ -6,6 +6,9 @@ class WidgetManager {
         // Header buttons (set when rendering widgets)
         this._undoButton = null;
         this._redoButton = null;
+        // Map to track dynamic widgets and their parameter listeners
+        this.dynamicWidgets = new Map(); // widgetId -> { parameterCommand, variations, listeners }
+        this.dynamicWidgetInstances = new Map(); // widgetInstanceId -> { container, widget, listeners }
     }
 
     setCurrentWidgets(widgets) {
@@ -34,6 +37,60 @@ class WidgetManager {
         return validValue;
     }
 
+    /**
+     * Resolve the effective widget configuration based on dynamic parameter.
+     * If widget has parameterVariations, it will merge the variation config on top of base config.
+     * @param {Object} widget - Base widget configuration
+     * @param {Object} currentValues - Current ECU values map
+     * @returns {Object} - Merged widget configuration
+     */
+    resolveWidgetVariation(widget, currentValues = {}) {
+        // If widget doesn't have dynamic parameters, return as-is
+        if (!widget.parameterCommand || !widget.parameterVariations) {
+            return widget;
+        }
+
+        // Get the parameter value from currentValues
+        const parameterValue = currentValues[widget.parameterCommand];
+        const variationKey = parameterValue !== undefined 
+            ? String(parameterValue)
+            : (widget.defaultVariation !== undefined ? widget.defaultVariation : null);
+
+        if (!variationKey || !widget.parameterVariations[variationKey]) {
+            return widget; // No matching variation, return base config
+        }
+
+        // Merge the variation on top of base widget config
+        const variation = widget.parameterVariations[variationKey];
+        return {
+            ...widget,
+            ...variation,
+            // Preserve certain fields that shouldn't be overridden
+            parameterCommand: widget.parameterCommand,
+            parameterVariations: widget.parameterVariations,
+            defaultVariation: widget.defaultVariation
+        };
+    }
+
+    /**
+     * Get the resolved command for a widget, considering dynamic variations.
+     * Critical: Call this BEFORE any reference to widget.command
+     * @param {Object} widget - Base widget configuration
+     * @param {Object} currentValues - Current ECU values map
+     * @returns {string} - The effective command to use
+     */
+    getResolvedCommand(widget, currentValues = {}) {
+        const resolved = this.resolveWidgetVariation(widget, currentValues);
+        return resolved.command;
+    }
+
+    /**
+     * Get a unique ID for a widget instance (used for tracking dynamic updates)
+     */
+    getWidgetInstanceId(widget, index) {
+        return `${widget.command}_${widget.type}_${index}`;
+    }
+
     createWidget(widget, currentValue, onValueChange) {
         switch (widget.type) {
             case 'slider':
@@ -54,8 +111,6 @@ class WidgetManager {
                 return this.createColorToggle(widget, onValueChange);
             case 'checkbox_group':
                 return this.createCheckboxGroup(widget, currentValue, onValueChange);
-            case 'linked_radio':
-                return this.createLinkedRadio(widget, currentValue, onValueChange);
             case 'chart2d':
                 return this.createChart2D(widget, currentValue, onValueChange);
             default:
@@ -187,8 +242,19 @@ class WidgetManager {
     }
 
     createCombobox(widget, currentValue, onValueChange) {
+        // Get the mode: classic or modern (default: modern)
+        const mode = widget.mode || 'modern';
+        
+        if (mode === 'classic') {
+            return this.createComboboxClassic(widget, currentValue, onValueChange);
+        } else {
+            return this.createComboboxModern(widget, currentValue, onValueChange);
+        }
+    }
+
+    createComboboxClassic(widget, currentValue, onValueChange) {
         const container = document.createElement('div');
-        container.className = 'widget-combobox';
+        container.className = 'widget-combobox widget-combobox-classic';
 
         const select = document.createElement('select');
         select.className = 'form-select custom-select';
@@ -214,6 +280,54 @@ class WidgetManager {
 
         container.appendChild(select);
         return container;
+    }
+
+    createComboboxModern(widget, currentValue, onValueChange) {
+        const container = document.createElement('div');
+        container.className = 'widget-combobox widget-combobox-modern';
+
+        // Display button showing current selection
+        const displayButton = document.createElement('button');
+        displayButton.className = 'combobox-display-button';
+        displayButton.type = 'button';
+        
+        // Find current label
+        const currentOption = widget.options.find(opt => opt.value == currentValue);
+        const currentLabel = currentOption ? currentOption.label : 'Selecione uma opção';
+        displayButton.textContent = currentLabel;
+        
+        // Store reference to update display later
+        displayButton.dataset.command = widget.command;
+
+        // Open modal on click
+        displayButton.addEventListener('click', () => {
+            this.openComboboxModal(widget, currentValue, (selectedValue) => {
+                // Update display
+                const selected = widget.options.find(opt => opt.value == selectedValue);
+                if (selected) {
+                    displayButton.textContent = selected.label;
+                }
+                
+                // Call callback
+                onValueChange(widget.command, selectedValue);
+                
+                // Push to global history
+                if (window.globalHistoryManager) {
+                    window.globalHistoryManager.push(window.globalHistoryManager.createSnapshot());
+                }
+            });
+        });
+
+        container.appendChild(displayButton);
+        return container;
+    }
+
+    /**
+     * Open modal for selecting ComboBox option
+     */
+    openComboboxModal(widget, currentValue, onSelected) {
+        // Delegate to DialogManager for centralized modal management with higher priority
+        dialogManager.showComboboxModal(widget, currentValue, onSelected);
     }
 
     createToggle(widget, currentValue, onValueChange) {
@@ -615,177 +729,19 @@ class WidgetManager {
         return container;
     }
 
-    createLinkedRadio(widget, currentValue, onValueChange) {
-        const container = document.createElement('div');
-        container.className = 'widget-linked-radio';
-
-        // Note: title/help are rendered by the surrounding widget container
-        // (renderWidgets creates a title row). Avoid duplicating them here.
-
-        const groupName = widget.group || widget.command || `radio_${Math.random().toString(36).substr(2,6)}`;
-
-        // Two modes supported for linked_radio:
-        // 1) Single-option widget (preferred): widget has `value` and represents one radio placed in its own frame/node.
-        // 2) Multi-option widget (legacy): widget has `options` array and renders several radios together.
-
-        const currentVal = (window.ecuManager && window.ecuManager.currentValues && window.ecuManager.currentValues[widget.command] !== undefined)
-            ? window.ecuManager.currentValues[widget.command]
-            : (widget.default !== undefined ? widget.default : null);
-
-        const optionsContainer = document.createElement('div');
-        optionsContainer.className = 'linked-radio-options';
-
-        // Preferred: single-value widget
-        if (widget.value !== undefined) {
-            const item = document.createElement('label');
-            item.className = 'radio-item linked single';
-
-            const input = document.createElement('input');
-            input.type = 'radio';
-            input.name = groupName;
-            input.value = widget.value;
-            input.checked = String(widget.value) === String(currentVal);
-            input.dataset.command = widget.command;
-
-            // Support click-again-to-unselect when group spans multiple nodes
-            input.addEventListener('mousedown', () => {
-                input._wasChecked = input.checked;
-            });
-
-            input.addEventListener('click', (e) => {
-                if (input._wasChecked) {
-                    const groupId = widget.group || widget.command || null;
-                    const groupInfo = window.ecuManager && window.ecuManager.linkedRadioGroups ? window.ecuManager.linkedRadioGroups[groupId] : null;
-                    const multipleNodes = groupInfo ? new Set(groupInfo.map(m => m.nodeId || '__root__')).size > 1 : true;
-
-                    if (multipleNodes) {
-                        e.preventDefault();
-                        e.stopPropagation();
-
-                        const savedVal = (window.ecuManager && window.ecuManager.savedValues && window.ecuManager.savedValues[widget.command] !== undefined)
-                            ? window.ecuManager.savedValues[widget.command]
-                            : (widget.default !== undefined ? widget.default : null);
-
-                        const radios = Array.from(document.querySelectorAll(`input[type="radio"][name="${widget.group || widget.command}"]`));
-                        radios.forEach(r => {
-                            r.checked = (savedVal !== null && String(r.value) === String(savedVal));
-                            r.dispatchEvent(new Event('change', { bubbles: true }));
-                        });
-
-                        if (window.notificationManager) {
-                            const msg = savedVal !== null ? `Revertido para '${savedVal}'` : 'Desvinculado (nenhum valor salvo)';
-                            window.notificationManager.info(`${widget.title || widget.command}: ${msg}`);
-                        }
-
-                        if (window.globalHistoryManager) window.globalHistoryManager.push(window.globalHistoryManager.createSnapshot());
-                        return;
-                    }
-                }
-
-                if (input.checked) {
-                    onValueChange(widget.command, widget.value);
-                    if (window.globalHistoryManager) window.globalHistoryManager.push(window.globalHistoryManager.createSnapshot());
-                }
-            });
-
-            const radioCustom = document.createElement('span');
-            radioCustom.className = 'radio-custom';
-
-            const radioLabel = document.createElement('span');
-            radioLabel.className = 'radio-label';
-            radioLabel.textContent = widget.label || widget.title || widget.value;
-
-            item.appendChild(input);
-            item.appendChild(radioCustom);
-            item.appendChild(radioLabel);
-            optionsContainer.appendChild(item);
-            container.appendChild(optionsContainer);
-            return container;
-        }
-
-        // Legacy: options array within same widget (not recommended for linked across frames)
-        if (widget.options && Array.isArray(widget.options)) {
-            widget.options.forEach(opt => {
-                const item = document.createElement('label');
-                item.className = 'radio-item linked';
-
-                const input = document.createElement('input');
-                input.type = 'radio';
-                input.name = groupName;
-                input.value = opt.value;
-                input.checked = String(opt.value) === String(currentVal);
-
-                // Allow 'click again to unselect' behavior for linked radios when group spans multiple nodes
-                input.addEventListener('mousedown', () => {
-                    input._wasChecked = input.checked;
-                });
-
-                input.addEventListener('click', (e) => {
-                    // If it was already checked before this click, treat as unselect request
-                    if (input._wasChecked) {
-                        const groupId = widget.group || widget.command || null;
-                        const groupInfo = window.ecuManager && window.ecuManager.linkedRadioGroups ? window.ecuManager.linkedRadioGroups[groupId] : null;
-
-                        // If groupInfo exists and members span multiple nodes, perform unselect/revert
-                        const multipleNodes = groupInfo ? new Set(groupInfo.map(m => m.nodeId || '__root__')).size > 1 : true;
-
-                        if (multipleNodes) {
-                            e.preventDefault();
-                            e.stopPropagation();
-
-                            // Revert to saved value (or widget.default)
-                            const savedVal = (window.ecuManager && window.ecuManager.savedValues && window.ecuManager.savedValues[widget.command] !== undefined)
-                                ? window.ecuManager.savedValues[widget.command]
-                                : (widget.default !== undefined ? widget.default : null);
-
-                            // Find all radios in the group and set according to savedVal (or uncheck all if none)
-                            const radios = Array.from(document.querySelectorAll(`input[type="radio"][name="${widget.group || widget.command}"]`));
-                            radios.forEach(r => {
-                                r.checked = (savedVal !== null && String(r.value) === String(savedVal));
-                                r.dispatchEvent(new Event('change', { bubbles: true }));
-                            });
-
-                            if (window.notificationManager) {
-                                const msg = savedVal !== null ? `Revertido para '${savedVal}'` : 'Desvinculado (nenhum valor salvo)';
-                                window.notificationManager.info(`${widget.title || widget.command}: ${msg}`);
-                            }
-
-                            // Push snapshot after revert
-                            if (window.globalHistoryManager) {
-                                window.globalHistoryManager.push(window.globalHistoryManager.createSnapshot());
-                            }
-                            return;
-                        }
-                    }
-
-                    // Normal change behavior
-                    if (input.checked) {
-                        onValueChange(widget.command, opt.value);
-                        if (window.globalHistoryManager) {
-                            window.globalHistoryManager.push(window.globalHistoryManager.createSnapshot());
-                        }
-                    }
-                });
-
-                const radioCustom = document.createElement('span');
-                radioCustom.className = 'radio-custom';
-
-                const radioLabel = document.createElement('span');
-                radioLabel.className = 'radio-label';
-                radioLabel.textContent = opt.label || opt.value;
-
-                item.appendChild(input);
-                item.appendChild(radioCustom);
-                item.appendChild(radioLabel);
-                optionsContainer.appendChild(item);
-            });
-        }
-
-        container.appendChild(optionsContainer);
-        return container;
-    }
-
     renderWidgets(widgets, widgetsArea, currentValues, onValueChange, breadcrumbPath, modifiedWidgets = new Set()) {
+        // Clean up previous dynamic widget listeners
+        for (const [id, instance] of this.dynamicWidgetInstances) {
+            if (instance.listeners) {
+                instance.listeners.forEach(listener => {
+                    if (window.ecuManager && window.ecuManager.unsubscribeFromValueChange) {
+                        window.ecuManager.unsubscribeFromValueChange(listener.command, listener.callback);
+                    }
+                });
+            }
+        }
+        this.dynamicWidgetInstances.clear();
+
         widgetsArea.innerHTML = '';
 
         if (breadcrumbPath) {
@@ -814,14 +770,14 @@ class WidgetManager {
             // Export / Import buttons
             const exportBtn = document.createElement('button');
             exportBtn.className = 'export-btn';
-            exportBtn.title = 'Exportar configuração criptografada';
-            exportBtn.innerHTML = '<i class="bi bi-download"></i>';
+            exportBtn.title = 'Exportar configuração';
+            exportBtn.innerHTML = '<i class="bi bi-upload"></i>';
             exportBtn.id = 'exportBtnHeader';
 
             const importBtn = document.createElement('button');
             importBtn.className = 'import-btn';
-            importBtn.title = 'Importar configuração criptografada';
-            importBtn.innerHTML = '<i class="bi bi-upload"></i>';
+            importBtn.title = 'Importar configuração';
+            importBtn.innerHTML = '<i class="bi bi-download"></i>';
             importBtn.id = 'importBtnHeader';
 
             // Store references for later updates by the chart controller
@@ -920,22 +876,27 @@ class WidgetManager {
 
         this.setCurrentWidgets(widgets);
 
-        widgets.forEach(widget => {
+        widgets.forEach((widget, widgetIndex) => {
             const container = document.createElement('div');
             container.className = 'widget-container';
+
+            // Resolve widget variation if it has dynamic parameters
+            const resolvedWidget = this.resolveWidgetVariation(widget, currentValues);
+            const resolvedCommand = resolvedWidget.command;
+            const instanceId = this.getWidgetInstanceId(widget, widgetIndex);
 
             const titleRow = document.createElement('div');
             titleRow.className = 'widget-title-row';
 
             const title = document.createElement('div');
             title.className = 'widget-title';
-            title.textContent = widget.title;
+            title.textContent = resolvedWidget.title;
 
             const modifiedIndicator = document.createElement('div');
             modifiedIndicator.className = 'widget-modified-indicator';
             modifiedIndicator.title = 'Widget alterado';
 
-            if (modifiedWidgets.has(widget.command)) {
+            if (modifiedWidgets.has(resolvedCommand)) {
                 modifiedIndicator.style.display = 'block';
             } else {
                 modifiedIndicator.style.display = 'none';
@@ -946,23 +907,101 @@ class WidgetManager {
 
             container.appendChild(titleRow);
 
-            if (widget.help) {
+            if (resolvedWidget.help) {
                 const help = document.createElement('div');
                 help.className = 'widget-help';
-                help.textContent = widget.help;
+                help.textContent = resolvedWidget.help;
                 container.appendChild(help);
             }
 
-            const currentValue = currentValues[widget.command] !== undefined
-                ? currentValues[widget.command]
-                : widget.default;
+            // For checkbox_group, pass the full currentValues map so each checkbox can read its own command value
+            // For other widgets, pass just the scalar value
+            let widgetCurrentValue;
+            if (resolvedWidget.type === 'checkbox_group') {
+                widgetCurrentValue = currentValues; // Pass full map for checkbox_group
+            } else {
+                widgetCurrentValue = currentValues[resolvedCommand] !== undefined
+                    ? currentValues[resolvedCommand]
+                    : resolvedWidget.default;
+            }
 
-            const widgetContent = this.createWidget(widget, currentValue, (cmd, val) => {
+            const widgetContent = this.createWidget(resolvedWidget, widgetCurrentValue, (cmd, val) => {
                 onValueChange(cmd, val, container);
             });
             container.appendChild(widgetContent);
 
             widgetsArea.appendChild(container);
+
+            // If widget has dynamic parameters, set up listener for parameter changes
+            if (widget.parameterCommand && widget.parameterVariations) {
+                const listeners = [];
+                
+                // Create a function that will update the widget when parameter changes
+                const updateWidgetVariation = () => {
+                    const newResolvedWidget = this.resolveWidgetVariation(widget, currentValues);
+                    
+                    // Only rebuild if configuration actually changed
+                    if (JSON.stringify(this.resolveWidgetVariation(widget, currentValues)) !== 
+                        JSON.stringify(resolvedWidget)) {
+                        
+                        // Update title if it changed
+                        if (newResolvedWidget.title !== resolvedWidget.title) {
+                            titleRow.querySelector('.widget-title').textContent = newResolvedWidget.title;
+                        }
+
+                        // Update help if it changed
+                        if (newResolvedWidget.help !== resolvedWidget.help) {
+                            const existingHelp = container.querySelector('.widget-help');
+                            if (existingHelp) {
+                                if (newResolvedWidget.help) {
+                                    existingHelp.textContent = newResolvedWidget.help;
+                                } else {
+                                    existingHelp.remove();
+                                }
+                            } else if (newResolvedWidget.help) {
+                                const help = document.createElement('div');
+                                help.className = 'widget-help';
+                                help.textContent = newResolvedWidget.help;
+                                container.insertBefore(help, container.lastChild);
+                            }
+                        }
+
+                        // If widget type or critical parameters changed, rebuild the widget
+                        if (newResolvedWidget.type !== resolvedWidget.type || 
+                            JSON.stringify({min: newResolvedWidget.min, max: newResolvedWidget.max, step: newResolvedWidget.step}) 
+                            !== JSON.stringify({min: resolvedWidget.min, max: resolvedWidget.max, step: resolvedWidget.step})) {
+                            
+                            const oldWidgetContent = container.querySelector(`.widget-${resolvedWidget.type}`);
+                            if (oldWidgetContent) {
+                                const newWidgetContent = this.createWidget(newResolvedWidget, widgetCurrentValue, (cmd, val) => {
+                                    onValueChange(cmd, val, container);
+                                });
+                                oldWidgetContent.replaceWith(newWidgetContent);
+                            }
+                        }
+                    }
+                };
+
+                // Listen to changes on the parameter command
+                if (window.ecuManager && window.ecuManager.subscribeToValueChange) {
+                    window.ecuManager.subscribeToValueChange(widget.parameterCommand, (newValue) => {
+                        currentValues[widget.parameterCommand] = newValue;
+                        updateWidgetVariation();
+                    });
+
+                    listeners.push({
+                        command: widget.parameterCommand,
+                        callback: updateWidgetVariation
+                    });
+                }
+
+                this.dynamicWidgetInstances.set(instanceId, {
+                    container,
+                    widget,
+                    listeners,
+                    resolvedWidget
+                });
+            }
         });
     }
 

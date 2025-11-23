@@ -113,6 +113,8 @@ class WidgetManager {
                 return this.createCheckboxGroup(widget, currentValue, onValueChange);
             case 'chart2d':
                 return this.createChart2D(widget, currentValue, onValueChange);
+            case 'table3d':
+                return this.createTable3D(widget, currentValue, onValueChange);
             default:
                 const div = document.createElement('div');
                 div.textContent = 'Widget não suportado';
@@ -914,11 +916,11 @@ class WidgetManager {
                 container.appendChild(help);
             }
 
-            // For checkbox_group, pass the full currentValues map so each checkbox can read its own command value
+            // For checkbox_group and table3d, pass the full currentValues map so they can read their own command values
             // For other widgets, pass just the scalar value
             let widgetCurrentValue;
-            if (resolvedWidget.type === 'checkbox_group') {
-                widgetCurrentValue = currentValues; // Pass full map for checkbox_group
+            if (resolvedWidget.type === 'checkbox_group' || resolvedWidget.type === 'table3d') {
+                widgetCurrentValue = currentValues; // Pass full map for checkbox_group and table3d
             } else {
                 widgetCurrentValue = currentValues[resolvedCommand] !== undefined
                     ? currentValues[resolvedCommand]
@@ -1329,6 +1331,28 @@ class WidgetManager {
         return container;
     }
 
+    createTable3D(widget, currentValue, onValueChange) {
+        // Table3D precisa de um mapa de valores para cada rowCommand
+        // Se currentValue é apenas um valor scalar, criamos um mapa vazio
+        // Se é um objeto (mapa), passamos como está
+        let valueMap = {};
+        
+        if (widget.rowCommands && Array.isArray(widget.rowCommands)) {
+            // Cria mapa de comandos -> valores
+            if (typeof currentValue === 'object' && currentValue !== null && !Array.isArray(currentValue)) {
+                // currentValue já é um mapa, usa como está
+                valueMap = currentValue;
+            } else {
+                // Cria mapa vazio (valores default serão usados)
+                widget.rowCommands.forEach(cmd => {
+                    valueMap[cmd] = undefined;
+                });
+            }
+        }
+
+        const controller = new Table3DController(widget, valueMap, onValueChange);
+        return controller.create();
+    }
 
     clearWidgets(widgetsArea) {
         widgetsArea.innerHTML = `

@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Table3D - Demo Completa</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="style.css">
+    <style>
+        body {
+            padding: 20px;
+        }
+        .demo-container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        .demo-info {
+            background-color: var(--bg-darker);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+        .demo-info h2 {
+            color: var(--light-red);
+            margin-top: 0;
+        }
+        .feature-list {
+            list-style: none;
+            padding: 0;
+        }
+        .feature-list li {
+            padding: 8px 0;
+            padding-left: 25px;
+            position: relative;
+        }
+        .feature-list li:before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            color: #00aa00;
+            font-weight: bold;
+        }
+        .widget-demo {
+            background-color: var(--bg-darker);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="demo-container">
+        <h1 style="color: var(--light-red);">🎉 Table3D Widget - Demo Completa</h1>
+
+        <div class="demo-info">
+            <h2>O que foi implementado?</h2>
+            <ul class="feature-list">
+                <li>Widget de tabela 3D completamente funcional</li>
+                <li>Suporte a tabelas N×M (ex: 15×20, 20×20)</li>
+                <li>Um comando ECU por linha</li>
+                <li>3 modos de cores (gradient, heat, cool)</li>
+                <li>Edição de células (clique simples ou Shift+Click)</li>
+                <li>Interpolação automática de valores</li>
+                <li>Preenchimento de linhas</li>
+                <li>Compatibilidade com parameterVariations</li>
+                <li>Integração com histórico (Undo/Redo)</li>
+                <li>Tooltips interativas</li>
+                <li>Totalmente responsivo e dark-themed</li>
+            </ul>
+        </div>
+
+        <div class="demo-info">
+            <h2>Como usar?</h2>
+            <p><strong>1. Navegar:</strong> Vá para <em>Tabelas 3D</em> no menu à esquerda</p>
+            <p><strong>2. Selecionar:</strong> Clique em qualquer célula para selecionar</p>
+            <p><strong>3. Editar:</strong> 
+                <ul style="margin-top: 10px;">
+                    <li>Use o campo "Editar valor" para alterar célula selecionada</li>
+                    <li>Ou use Shift+Click para editar inline na célula</li>
+                </ul>
+            </p>
+            <p><strong>4. Preencher:</strong> Selecione célula + insira valor + clique "Preencher Linha"</p>
+            <p><strong>5. Interpolar:</strong> Configure primeira e última coluna + clique "Interpolar"</p>
+            <p><strong>6. Salvar:</strong> Clique em "Salvar" na barra inferior para enviar para ECU</p>
+        </div>
+
+        <div class="demo-info">
+            <h2>Exemplos Configurados</h2>
+            <h4 style="color: #8B9DC3;">1. Tabela de Correção por RPM (15×20)</h4>
+            <p>Caminho: <code>Tabelas 3D → Correção por RPM</code></p>
+            <p>Descrição: Matriz de correção com cada linha sendo um nível RPM diferente</p>
+            <p>Comandos: <code>table_rpm_corr_row_0</code> até <code>table_rpm_corr_row_14</code></p>
+            
+            <h4 style="color: #8B9DC3;">2. Mapa de Carga do Motor (20×20)</h4>
+            <p>Caminho: <code>Tabelas 3D → Mapa de Carga</code></p>
+            <p>Descrição: Mapa de carga do motor com RPM×TPS</p>
+            <p>Comandos: <code>map_load_row_0</code> até <code>map_load_row_19</code></p>
+        </div>
+
+        <div class="demo-info">
+            <h2>Arquivos Criados/Modificados</h2>
+            <ul style="list-style: none; padding: 0;">
+                <li style="padding: 8px; background-color: #2a2a2a; border-radius: 4px; margin: 5px 0;">
+                    <strong>✨ Novos:</strong>
+                    <ul style="margin: 5px 0; padding-left: 20px;">
+                        <li><code>table3d-controller.js</code> - Classe principal (556 linhas)</li>
+                        <li><code>test-table3d.html</code> - Testes unitários</li>
+                    </ul>
+                </li>
+                <li style="padding: 8px; background-color: #2a2a2a; border-radius: 4px; margin: 5px 0;">
+                    <strong>🔧 Modificados:</strong>
+                    <ul style="margin: 5px 0; padding-left: 20px;">
+                        <li><code>widgets.js</code> - Integração do widget</li>
+                        <li><code>style.css</code> - Estilos CSS (~250 linhas)</li>
+                        <li><code>index.html</code> - Link para novo JS</li>
+                        <li><code>su.json</code> - 2 exemplos de tabela 3D</li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+
+        <div class="demo-info">
+            <h2>Cores Disponíveis</h2>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
+                <div style="padding: 15px; border-radius: 4px; background: linear-gradient(to right, rgb(180,20,20), rgb(255,30,30));">
+                    <strong>Gradient</strong> (Padrão)<br><small>Vermelho claro → escuro</small>
+                </div>
+                <div style="padding: 15px; border-radius: 4px; background: linear-gradient(to right, rgb(0,0,255), rgb(0,255,0), rgb(255,255,0), rgb(255,165,0), rgb(255,0,0));">
+                    <strong>Heat</strong><br><small>Azul → Verde → Amarelo → Vermelho</small>
+                </div>
+                <div style="padding: 15px; border-radius: 4px; background: linear-gradient(to right, rgb(255,255,255), rgb(0,100,255), rgb(0,0,0)); color: #fff;">
+                    <strong>Cool</strong><br><small>Branco → Azul → Preto</small>
+                </div>
+            </div>
+        </div>
+
+        <div class="demo-info">
+            <h2>✅ Agora teste você mesmo!</h2>
+            <p style="font-size: 16px;">
+                <strong>Clique no botão abaixo para voltar à aplicação principal e testar a tabela 3D:</strong>
+            </p>
+            <a href="index.html" style="display: inline-block; margin-top: 10px; padding: 12px 20px; background-color: var(--primary-red); color: white; text-decoration: none; border-radius: 4px; font-weight: 500;">
+                ➜ Voltar para DSW ECU Manager
+            </a>
+        </div>
+    </div>
+</body>
+</html>

@@ -370,6 +370,94 @@
           ]
         }
       ]
+    },
+    {
+      "id": "tabelas_3d",
+      "label": "Tabelas 3D",
+      "icon": "bi-grid-3x3-gap",
+      "children": [
+        {
+          "id": "tabela_correccao_rpm",
+          "label": "Correção por RPM",
+          "icon": "bi-table",
+          "widgets": [
+            {
+              "type": "table3d",
+              "title": "Tabela de Correção por RPM",
+              "help": "Matriz de correção: cada linha é RPM e cada coluna é um fator de ajuste. Selecione células para editar, use Shift+Click para editar inline.",
+              "rows": 15,
+              "cols": 20,
+              "rowCommands": [
+                "table_rpm_corr_row_0",
+                "table_rpm_corr_row_1",
+                "table_rpm_corr_row_2",
+                "table_rpm_corr_row_3",
+                "table_rpm_corr_row_4",
+                "table_rpm_corr_row_5",
+                "table_rpm_corr_row_6",
+                "table_rpm_corr_row_7",
+                "table_rpm_corr_row_8",
+                "table_rpm_corr_row_9",
+                "table_rpm_corr_row_10",
+                "table_rpm_corr_row_11",
+                "table_rpm_corr_row_12",
+                "table_rpm_corr_row_13",
+                "table_rpm_corr_row_14"
+              ],
+              "min": 0,
+              "max": 100,
+              "step": 0.1,
+              "unit": "%",
+              "colorMode": "heat",
+              "xLabel": "Fator de Ajuste",
+              "yLabel": "RPM"
+            }
+          ]
+        },
+        {
+          "id": "tabela_carga_motor",
+          "label": "Mapa de Carga",
+          "icon": "bi-table",
+          "widgets": [
+            {
+              "type": "table3d",
+              "title": "Mapa de Carga do Motor",
+              "help": "Tabela de mapa de carga: linhas = RPM, colunas = TPS (posição do acelerador). Com suporte a cores gradiente.",
+              "rows": 20,
+              "cols": 20,
+              "rowCommands": [
+                "map_load_row_0",
+                "map_load_row_1",
+                "map_load_row_2",
+                "map_load_row_3",
+                "map_load_row_4",
+                "map_load_row_5",
+                "map_load_row_6",
+                "map_load_row_7",
+                "map_load_row_8",
+                "map_load_row_9",
+                "map_load_row_10",
+                "map_load_row_11",
+                "map_load_row_12",
+                "map_load_row_13",
+                "map_load_row_14",
+                "map_load_row_15",
+                "map_load_row_16",
+                "map_load_row_17",
+                "map_load_row_18",
+                "map_load_row_19"
+              ],
+              "min": 10,
+              "max": 200,
+              "step": 0.5,
+              "unit": "kPa",
+              "colorMode": "heat",
+              "xLabel": "TPS (%)",
+              "yLabel": "RPM (x100)"
+            }
+          ]
+        }
+      ]
     }
   ]
 }

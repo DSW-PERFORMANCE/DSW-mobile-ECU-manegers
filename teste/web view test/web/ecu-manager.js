@@ -8,6 +8,8 @@ class ECUManager {
         this.screenModified = false;
         this.savedValues = {};
         this._valueNormalizer = this._normalizeValue.bind(this);
+        // Value change listeners for dynamic widgets
+        this._valueChangeListeners = new Map(); // command -> [callbacks]
     }
 
     _normalizeValue(v) {
@@ -39,87 +41,8 @@ class ECUManager {
         try {
             const response = await fetch('su.json');
             this.config = await response.json();
-            // Validate linked_radio groups across the entire config
-            this._validateLinkedRadios();
         } catch (error) {
             console.error('Erro ao carregar configuração:', error);
-        }
-    }
-
-    _validateLinkedRadios() {
-        if (!this.config || !Array.isArray(this.config.tree)) return;
-
-        const groups = {};
-
-        const traverse = (nodes, parentIdPath = []) => {
-            for (const node of nodes) {
-                const nodeId = node.id || null;
-                if (node.widgets && Array.isArray(node.widgets)) {
-                    node.widgets.forEach(widget => {
-                        if (widget.type === 'linked_radio') {
-                            const groupId = widget.group || widget.command || null;
-                            if (!groupId) return;
-                            groups[groupId] = groups[groupId] || [];
-                            groups[groupId].push({
-                                widget: widget,
-                                command: widget.command,
-                                nodeId: nodeId,
-                                nodePath: parentIdPath.concat(node.label || nodeId).join(' / ')
-                            });
-                        }
-                    });
-                }
-
-                if (node.children && node.children.length > 0) {
-                    traverse(node.children, parentIdPath.concat(node.label || node.id));
-                }
-            }
-        };
-
-        traverse(this.config.tree);
-
-        // Expose groups map for runtime use (linked radio behavior)
-        this.linkedRadioGroups = groups;
-
-        // Now validate each group
-        for (const [groupId, members] of Object.entries(groups)) {
-            // Count validation
-            if (members.length < 2 || members.length > 4) {
-                const msg = `linked_radio group '${groupId}' must have between 2 and 4 members (found ${members.length}).`;
-                console.error(msg, members);
-                if (window.notificationManager) window.notificationManager.error(msg);
-            }
-
-            // Command equality validation
-            const commands = new Set(members.map(m => String(m.command)));
-            if (commands.size > 1) {
-                const msg = `linked_radio group '${groupId}' members must share the same 'command'. Found different commands: ${[...commands].join(', ')}.`;
-                console.error(msg, members);
-                if (window.notificationManager) window.notificationManager.error(msg);
-            }
-
-            // Allow members to be placed in the same node, but limit to maximum 2 per node
-            const nodeCounts = members.reduce((acc, m) => {
-                const id = m.nodeId || '__root__';
-                acc[id] = (acc[id] || 0) + 1;
-                return acc;
-            }, {});
-
-            for (const [nodeId, cnt] of Object.entries(nodeCounts)) {
-                if (cnt > 2) {
-                    const msg = `linked_radio group '${groupId}' has ${cnt} members inside node '${nodeId}'. Maximum 2 members per node are allowed.`;
-                    console.error(msg, members.filter(m => (m.nodeId || '__root__') === nodeId));
-                    if (window.notificationManager) window.notificationManager.error(msg);
-                }
-            }
-            // Disallow defining multiple options inside a single linked_radio widget when intending cross-frame linking
-            members.forEach(m => {
-                if (m.widget && Array.isArray(m.widget.options) && m.widget.options.length > 1) {
-                    const msg = `linked_radio widget in node '${m.nodePath}' uses 'options' array. For cross-frame linking each linked_radio must be a single-option widget (use 'value').`;
-                    console.error(msg, m);
-                    if (window.notificationManager) window.notificationManager.error(msg);
-                }
-            });
         }
     }
 
@@ -354,6 +277,9 @@ class ECUManager {
     onValueChange(command, value, widgetElement) {
         const normalized = this._normalizeValue(value);
         this.currentValues[command] = normalized;
+
+        // Notify all dynamic widget listeners about this value change
+        this._notifyValueChangeListeners(command, normalized);
 
         // Compare normalized saved value vs normalized incoming
         const saved = this.savedValues.hasOwnProperty(command) ? this.savedValues[command] : undefined;
@@ -616,6 +542,221 @@ class ECUManager {
                 }
                 this.goHome();
             });
+        }
+    }
+
+    /**
+     * Subscribe to value changes for a specific command.
+     * Used by dynamic widgets to react to parameter changes.
+     * @param {string} command - The command to listen for
+     * @param {Function} callback - Callback(newValue) to invoke when value changes
+     */
+    subscribeToValueChange(command, callback) {
+        if (!this._valueChangeListeners.has(command)) {
+            this._valueChangeListeners.set(command, []);
+        }
+        this._valueChangeListeners.get(command).push(callback);
+    }
+
+    /**
+     * Unsubscribe from value changes.
+     * @param {string} command - The command to stop listening for
+     * @param {Function} callback - The exact callback function to remove
+     */
+    unsubscribeFromValueChange(command, callback) {
+        if (this._valueChangeListeners.has(command)) {
+            const callbacks = this._valueChangeListeners.get(command);
+            const index = callbacks.indexOf(callback);
+            if (index > -1) {
+                callbacks.splice(index, 1);
+            }
+        }
+    }
+
+    /**
+     * Notify all listeners about a value change.
+     * Called internally when a value changes.
+     * @param {string} command - The command that changed
+     * @param {*} value - The new value
+     */
+    _notifyValueChangeListeners(command, value) {
+        if (this._valueChangeListeners.has(command)) {
+            const callbacks = this._valueChangeListeners.get(command);
+            callbacks.forEach(callback => {
+                try {
+                    callback(value);
+                } catch (error) {
+                    console.error(`Error in value change listener for ${command}:`, error);
+                }
+            });
+        }
+    }
+
+    /**
+     * Exporta a configuração atual da aba como arquivo criptografado
+     */
+    async exportCurrentConfig() {
+        if (!this.currentNodeId) {
+            if (window.notificationManager) {
+                window.notificationManager.warning('Selecione uma aba para exportar');
+            } else {
+                alert('Selecione uma aba para exportar');
+            }
+            return;
+        }
+
+        const node = this.findNodeById(this.currentNodeId);
+        if (!node) {
+            if (window.notificationManager) {
+                window.notificationManager.warning('Aba não encontrada');
+            } else {
+                alert('Aba não encontrada');
+            }
+            return;
+        }
+
+        // Solicita senha ao usuário
+        const values = await window.dialogManager.promptValues(
+            'Exportar Configuração',
+            [
+                {
+                    label: 'Senha de Criptografia',
+                    type: 'text',
+                    default: '',
+                    icon: 'bi-lock',
+                    validate: (val) => val && val.length >= 6
+                }
+            ],
+            'bi-download'
+        );
+
+        if (!values) return;
+
+        const password = values['Senha de Criptografia'];
+
+        if (!password || password.length < 6) {
+            if (window.notificationManager) {
+                window.notificationManager.warning('Senha deve ter pelo menos 6 caracteres');
+            } else {
+                alert('Senha deve ter pelo menos 6 caracteres');
+            }
+            return;
+        }
+
+        try {
+            // Prepara dados para exportar
+            const configData = {
+                timestamp: new Date().toISOString(),
+                version: '1.0',
+                tabName: this.currentBreadcrumb,
+                nodeId: this.currentNodeId,
+                values: this.currentValues,
+                widgets: node.widgets
+            };
+
+            // Exporta com criptografia
+            await window.configExportImport.exportConfig(
+                configData,
+                password,
+                `config_${node.label.replace(/\s+/g, '_')}`
+            );
+
+            if (window.notificationManager) {
+                window.notificationManager.info('Configuração exportada com sucesso!');
+            } else {
+                alert('Configuração exportada com sucesso!');
+            }
+        } catch (error) {
+            console.error('Erro ao exportar:', error);
+            if (window.notificationManager) {
+                window.notificationManager.error('Erro ao exportar configuração', error.message);
+            } else {
+                alert('Erro ao exportar: ' + error.message);
+            }
+        }
+    }
+
+    /**
+     * Importa uma configuração de arquivo criptografado
+     */
+    async importCurrentConfig(file) {
+        if (!window.configExportImport.isValidConfigFile(file)) {
+            window.notificationManager.warning('Arquivo inválido. Use um arquivo .dswcfg');
+            return;
+        }
+
+        // Solicita senha ao usuário
+        const values = await window.dialogManager.promptValues(
+            'Importar Configuração',
+            [
+                {
+                    label: 'Senha de Descriptografia',
+                    type: 'text',
+                    default: '',
+                    icon: 'bi-lock-fill'
+                }
+            ],
+            'bi-upload'
+        );
+
+        if (!values) return;
+
+        const password = values['Senha de Descriptografia'];
+
+        try {
+            // Importa e descriptografa
+            const configData = await window.configExportImport.importConfig(file, password);
+
+            // Mostra informações do arquivo
+            const infoMsg = `
+Arquivo: ${configData.tabName}
+Data: ${new Date(configData.timestamp).toLocaleString()}
+Versão: ${configData.version}
+            `.trim();
+
+            const shouldImport = await window.dialogManager.confirm(
+                'Confirmar Importação',
+                `${infoMsg}\n\nDeseja aplicar estas configurações?`
+            );
+
+            if (!shouldImport) return;
+
+            // Aplica as valores importados
+            Object.assign(this.currentValues, configData.values);
+            this.modifiedWidgets.clear();
+            this.screenModified = false;
+
+            // Recarrega os widgets com os novos valores
+            if (this.currentNodeId) {
+                const node = this.findNodeById(this.currentNodeId);
+                if (node && node.widgets) {
+                    window.widgetManager.renderWidgets(
+                        node.widgets,
+                        document.getElementById('widgetsArea'),
+                        this.currentValues,
+                        (command, value, widgetElement) => this.onValueChange(command, value, widgetElement),
+                        this.currentBreadcrumb,
+                        this.modifiedWidgets
+                    );
+                }
+            }
+
+            // Normaliza os valores salvos
+            this.savedValues = {};
+            Object.keys(this.currentValues).forEach(k => {
+                this.savedValues[k] = this._normalizeValue(this.currentValues[k]);
+            });
+
+            this.updateBreadcrumb();
+            window.notificationManager.info('Configuração importada com sucesso!');
+
+        } catch (error) {
+            console.error('Erro ao importar:', error);
+            if (error.message.includes('decrypt')) {
+                window.notificationManager.error('Erro ao descriptografar', 'Senha incorreta ou arquivo corrompido');
+            } else {
+                window.notificationManager.error('Erro ao importar configuração', error.message);
+            }
         }
     }
 }

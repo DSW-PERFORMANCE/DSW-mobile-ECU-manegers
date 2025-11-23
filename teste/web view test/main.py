@@ -99,7 +99,7 @@ if __name__ == "__main__":
         "web/index.html",
         js_api=api,
         width=1000,
-        height=700,
+        height=700, 
         background_color="#333333",
         min_size=(893,504),
         
