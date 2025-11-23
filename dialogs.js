@@ -123,13 +123,6 @@ class DialogManager {
         return this.show(title, message, 'retry');
     }
 
-    /**
-     * Mostra um diálogo de informação (apenas botão OK)
-     * @param {string} title
-     * @param {string} message
-     * @param {string} icon (opcional)
-     * @returns {Promise<void>}
-     */
     async info(title, message, icon = 'bi-info-circle-fill') {
         return new Promise((resolve) => {
             const container = document.getElementById('dialogContainer');
@@ -174,13 +167,6 @@ class DialogManager {
         });
     }
 
-    /**
-     * Mostra um diálogo para pedir um ou mais valores
-     * @param {string} title
-     * @param {Array<{label:string, type:string, default:any, min?:number, max?:number, icon?:string, validate?:function}>} fields
-     * @param {string} icon (opcional)
-     * @returns {Promise<object|null>} Retorna objeto com valores ou null se cancelado
-     */
     async promptValues(title, fields, icon = 'bi-currency-dollar') {
         return new Promise((resolve) => {
             const container = document.getElementById('dialogContainer');
@@ -275,7 +261,6 @@ class DialogManager {
             okBtn.textContent = 'OK';
             okBtn.addEventListener('click', (e) => {
                 e.preventDefault();
-                // Validação dos campos
                 let valid = true;
                 const values = {};
                 inputs.forEach(({ input, field }) => {
@@ -317,31 +302,20 @@ class DialogManager {
         });
     }
 
-    /**
-     * Mostra um modal de seleção para ComboBox com busca
-     * Alta prioridade - show de bola!
-     * @param {object} widget - Configuração do widget ComboBox
-     * @param {any} currentValue - Valor atual selecionado
-     * @param {function} onSelected - Callback chamado quando usuário confirma seleção
-     * @returns {void}
-     */
     showComboboxModal(widget, currentValue, onSelected) {
-        // Create modal overlay with high priority
         const modalOverlay = document.createElement('div');
         modalOverlay.className = 'combobox-modal-overlay';
-        modalOverlay.style.zIndex = '99999'; // Show de bola - máxima prioridade!
+        modalOverlay.style.zIndex = '99999';
 
         const modal = document.createElement('div');
         modal.className = 'combobox-modal';
 
-        // Header
         const header = document.createElement('div');
         header.className = 'combobox-modal-header';
         const title = document.createElement('h3');
         title.textContent = widget.title || 'Selecione uma opção';
         header.appendChild(title);
 
-        // Search box
         const searchContainer = document.createElement('div');
         searchContainer.className = 'combobox-search-container';
         const searchInput = document.createElement('input');
@@ -351,14 +325,11 @@ class DialogManager {
         searchInput.setAttribute('aria-label', 'Pesquisar opções');
         searchContainer.appendChild(searchInput);
 
-        // Options list
         const optionsList = document.createElement('div');
         optionsList.className = 'combobox-options-list';
 
-        // Track currently selected value in modal
         let selectedInModal = currentValue;
 
-        // Populate options
         const renderOptions = (filter = '') => {
             optionsList.innerHTML = '';
             const filtered = widget.options.filter(opt => 
@@ -377,7 +348,6 @@ class DialogManager {
                 const item = document.createElement('button');
                 item.type = 'button';
                 item.className = 'combobox-option-item';
-                // Mark as selected if it matches current modal selection
                 if (option.value == selectedInModal) {
                     item.classList.add('selected');
                 }
@@ -385,10 +355,7 @@ class DialogManager {
                 item.dataset.value = option.value;
 
                 item.addEventListener('click', () => {
-                    // Update selected value in modal
                     selectedInModal = option.value;
-                    
-                    // Update visual selection
                     optionsList.querySelectorAll('.combobox-option-item').forEach(btn => {
                         btn.classList.remove('selected');
                     });
@@ -401,12 +368,10 @@ class DialogManager {
 
         renderOptions();
 
-        // Search input event
         searchInput.addEventListener('input', (e) => {
             renderOptions(e.target.value);
         });
 
-        // Footer with buttons
         const footer = document.createElement('div');
         footer.className = 'combobox-modal-footer';
 
@@ -421,7 +386,6 @@ class DialogManager {
         applyBtn.type = 'button';
         applyBtn.textContent = 'Aplicar';
         
-        // Apply the selected value from modal
         applyBtn.addEventListener('click', () => {
             closeModal();
             onSelected(selectedInModal);
@@ -430,7 +394,6 @@ class DialogManager {
         footer.appendChild(cancelBtn);
         footer.appendChild(applyBtn);
 
-        // Assemble modal
         modal.appendChild(header);
         modal.appendChild(searchContainer);
         modal.appendChild(optionsList);
@@ -439,22 +402,18 @@ class DialogManager {
         modalOverlay.appendChild(modal);
         document.body.appendChild(modalOverlay);
 
-        // Focus on search input
         searchInput.focus();
 
-        // Close modal function
         const closeModal = () => {
             modalOverlay.remove();
         };
 
-        // Close on overlay click
         modalOverlay.addEventListener('click', (e) => {
             if (e.target === modalOverlay) {
                 closeModal();
             }
         });
 
-        // Close on Escape key
         const escapeHandler = (e) => {
             if (e.key === 'Escape') {
                 closeModal();
@@ -464,13 +423,6 @@ class DialogManager {
         document.addEventListener('keydown', escapeHandler);
     }
 
-    /**
-     * Mostra um diálogo de pausa/carregando (não pode ser fechado pelo usuário)
-     * @param {string} title
-     * @param {string} message
-     * @param {string} icon (opcional)
-     * @returns {function} Retorna função para fechar o diálogo
-     */
     showPause(title, message, icon = 'bi-arrow-repeat') {
         const container = document.getElementById('dialogContainer');
         const backdrop = document.createElement('div');
@@ -498,7 +450,6 @@ class DialogManager {
         container.appendChild(backdrop);
         setTimeout(() => backdrop.classList.add('show'), 10);
 
-        // Adiciona animação CSS para girar
         if (!document.getElementById('dialog-spin-style')) {
             const style = document.createElement('style');
             style.id = 'dialog-spin-style';
@@ -506,16 +457,12 @@ class DialogManager {
             document.head.appendChild(style);
         }
 
-        // Retorna função para fechar
         return () => {
             backdrop.classList.remove('show');
             setTimeout(() => backdrop.remove(), 300);
         };
     }
 
-    /**
-     * Mostra diálogo personalizado com conteúdo HTML
-     */
     showCustomDialog(title, contentElement, onOk) {
         return new Promise((resolve) => {
             const container = document.getElementById('dialogContainer');
@@ -577,9 +524,6 @@ class DialogManager {
         });
     }
 
-    /**
-     * Mostra diálogo para editar valor numérico
-     */
     editNumberValue(title, value, min, max, step, unit, onConfirm) {
         return new Promise((resolve) => {
             const container = document.getElementById('dialogContainer');

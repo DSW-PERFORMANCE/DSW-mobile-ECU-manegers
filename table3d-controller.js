@@ -533,55 +533,227 @@ class Table3DController {
     /**
      * Preenche uma linha com um valor
      */
-    fillRow(row, value) {
-        const clamped = Math.max(this.min, Math.min(this.max, value));
-        for (let col = 0; col < this.cols; col++) {
-            this.data[row][col] = clamped;
-        }
-        this.redrawRow(row);
-        this.sendUpdate();
-
-        if (window.notificationManager) {
-            window.notificationManager.info(`Linha ${row} preenchida com ${clamped}`);
-        }
-    }
-
     /**
-     * Interpola valores entre primeira e última coluna
+     * Interpola horizontalmente (entre colunas)
      */
-    interpolateRow(row) {
-        if (this.cols < 2) return;
+    interpolateHorizontal() {
+        const cells = Array.from(this.selectedCells).map(key => {
+            const [row, col] = key.split(',').map(Number);
+            return { row, col };
+        });
 
-        const firstVal = this.data[row][0];
-        const lastVal = this.data[row][this.cols - 1];
+        if (cells.length < 2) return;
 
-        for (let col = 0; col < this.cols; col++) {
-            const t = col / (this.cols - 1);
-            this.data[row][col] = firstVal + (lastVal - firstVal) * t;
-        }
+        // Agrupa por linha
+        const rowMap = {};
+        cells.forEach(cell => {
+            if (!rowMap[cell.row]) rowMap[cell.row] = [];
+            rowMap[cell.row].push(cell.col);
+        });
 
-        this.redrawRow(row);
-        this.sendUpdate();
+        // Interpola cada linha
+        Object.keys(rowMap).forEach(row => {
+            const cols = rowMap[row].sort((a, b) => a - b);
+            if (cols.length < 2) return;
 
-        if (window.notificationManager) {
-            window.notificationManager.info(`Linha ${row} interpolada`);
-        }
-    }
+            for (let i = 0; i < cols.length - 1; i++) {
+                const startCol = cols[i];
+                const endCol = cols[i + 1];
+                const startVal = this.data[row][startCol];
+                const endVal = this.data[row][endCol];
 
-    /**
-     * Limpa toda a tabela
-     */
-    clearTable() {
-        for (let row = 0; row < this.data.length; row++) {
-            for (let col = 0; col < this.cols; col++) {
-                this.data[row][col] = this.min;
+                for (let c = startCol; c <= endCol; c++) {
+                    const t = (c - startCol) / (endCol - startCol);
+                    this.data[row][c] = startVal + (endVal - startVal) * t;
+                }
             }
+            this.redrawRow(row);
+        });
+
+        this.sendUpdate();
+        if (window.notificationManager) {
+            window.notificationManager.info('Interpolação horizontal aplicada');
         }
+    }
+
+    /**
+     * Interpola verticalmente (entre linhas)
+     */
+    interpolateVertical() {
+        const cells = Array.from(this.selectedCells).map(key => {
+            const [row, col] = key.split(',').map(Number);
+            return { row, col };
+        });
+
+        if (cells.length < 2) return;
+
+        // Agrupa por coluna
+        const colMap = {};
+        cells.forEach(cell => {
+            if (!colMap[cell.col]) colMap[cell.col] = [];
+            colMap[cell.col].push(cell.row);
+        });
+
+        // Interpola cada coluna
+        Object.keys(colMap).forEach(col => {
+            const rows = colMap[col].sort((a, b) => a - b);
+            if (rows.length < 2) return;
+
+            for (let i = 0; i < rows.length - 1; i++) {
+                const startRow = rows[i];
+                const endRow = rows[i + 1];
+                const startVal = this.data[startRow][col];
+                const endVal = this.data[endRow][col];
+
+                for (let r = startRow; r <= endRow; r++) {
+                    const t = (r - startRow) / (endRow - startRow);
+                    this.data[r][col] = startVal + (endVal - startVal) * t;
+                }
+            }
+        });
+
         this.redrawAll();
         this.sendUpdate();
-
         if (window.notificationManager) {
-            window.notificationManager.info('Tabela limpa');
+            window.notificationManager.info('Interpolação vertical aplicada');
+        }
+    }
+
+    /**
+     * Interpola diagonalmente
+     */
+    interpolateDiagonal() {
+        const cells = Array.from(this.selectedCells).map(key => {
+            const [row, col] = key.split(',').map(Number);
+            return { row, col };
+        });
+
+        if (cells.length < 2) return;
+
+        // Encontra min/max row e col
+        const rows = cells.map(c => c.row);
+        const cols = cells.map(c => c.col);
+        const minRow = Math.min(...rows);
+        const maxRow = Math.max(...rows);
+        const minCol = Math.min(...cols);
+        const maxCol = Math.max(...cols);
+
+        const startVal = this.data[minRow][minCol];
+        const endVal = this.data[maxRow][maxCol];
+
+        // Interpola diagonalmente
+        for (let r = minRow; r <= maxRow; r++) {
+            for (let c = minCol; c <= maxCol; c++) {
+                const tRow = (maxRow - minRow) > 0 ? (r - minRow) / (maxRow - minRow) : 0;
+                const tCol = (maxCol - minCol) > 0 ? (c - minCol) / (maxCol - minCol) : 0;
+                const t = (tRow + tCol) / 2; // Média das duas interpolações
+                this.data[r][c] = startVal + (endVal - startVal) * t;
+            }
+        }
+
+        this.redrawAll();
+        this.sendUpdate();
+        if (window.notificationManager) {
+            window.notificationManager.info('Interpolação diagonal aplicada');
+        }
+    }
+
+    /**
+     * Mostra diálogo de operações matemáticas
+     */
+    showMathDialog() {
+        if (!window.dialogManager) {
+            alert('Gerenciador de diálogos não disponível');
+            return;
+        }
+
+        const html = `
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
+                <button id="math-mult" class="btn btn-sm" style="padding: 10px; background: #2a5a8a; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                    <i class="bi bi-x"></i> Multiplicar
+                </button>
+                <button id="math-div" class="btn btn-sm" style="padding: 10px; background: #2a5a8a; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                    <i class="bi bi-slash"></i> Dividir
+                </button>
+                <button id="math-add" class="btn btn-sm" style="padding: 10px; background: #6a5a2a; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                    <i class="bi bi-plus"></i> Somar
+                </button>
+                <button id="math-sub" class="btn btn-sm" style="padding: 10px; background: #6a5a2a; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                    <i class="bi bi-dash"></i> Subtrair
+                </button>
+                <button id="math-set" class="btn btn-sm" style="padding: 10px; background: #8a3a3a; color: white; border: none; border-radius: 4px; cursor: pointer; grid-column: 1 / -1;">
+                    <i class="bi bi-equal"></i> Igualar Todas
+                </button>
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 500;">Valor:</label>
+                <input type="number" id="math-value" style="width: 100%; padding: 8px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; border-radius: 4px;">
+            </div>
+        `;
+
+        const container = document.createElement('div');
+        container.innerHTML = html;
+
+        const valueInput = container.querySelector('#math-value');
+        
+        const applyOperation = (op) => {
+            const value = parseFloat(valueInput.value);
+            if (isNaN(value)) {
+                alert('Digite um valor válido');
+                return;
+            }
+
+            const cells = Array.from(this.selectedCells).map(key => {
+                const [row, col] = key.split(',').map(Number);
+                return { row, col };
+            });
+
+            cells.forEach(cell => {
+                let newVal;
+                const currentVal = this.data[cell.row][cell.col];
+                
+                switch(op) {
+                    case 'mult': newVal = currentVal * value; break;
+                    case 'div': newVal = currentVal / value; break;
+                    case 'add': newVal = currentVal + value; break;
+                    case 'sub': newVal = currentVal - value; break;
+                    case 'set': newVal = value; break;
+                    default: newVal = currentVal;
+                }
+
+                this.updateCellValue(cell.row, cell.col, newVal);
+            });
+
+            this.redrawAll();
+            this.sendUpdate();
+            
+            if (window.notificationManager) {
+                window.notificationManager.info(`Operação aplicada a ${cells.length} célula(s)`);
+            }
+        };
+
+        container.querySelector('#math-mult').addEventListener('click', () => {
+            applyOperation('mult');
+        });
+        container.querySelector('#math-div').addEventListener('click', () => {
+            applyOperation('div');
+        });
+        container.querySelector('#math-add').addEventListener('click', () => {
+            applyOperation('add');
+        });
+        container.querySelector('#math-sub').addEventListener('click', () => {
+            applyOperation('sub');
+        });
+        container.querySelector('#math-set').addEventListener('click', () => {
+            applyOperation('set');
+        });
+
+        if (window.dialogManager && window.dialogManager.showCustomDialog) {
+            window.dialogManager.showCustomDialog(
+                'Operações Matemáticas',
+                container,
+                () => {} // OK callback (já aplicado direto)
+            );
         }
     }
 
