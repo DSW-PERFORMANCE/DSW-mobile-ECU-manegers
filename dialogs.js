@@ -314,6 +314,16 @@ class DialogManager {
         const modal = document.createElement('div');
         modal.className = 'combobox-modal';
 
+        // DEFINIR closeModal ANTES de usar
+        const closeModal = () => {
+            modalOverlay.classList.remove('show');
+            setTimeout(() => {
+                if (modalOverlay.parentNode) {
+                    modalOverlay.remove();
+                }
+            }, 300);
+        };
+
         const header = document.createElement('div');
         header.className = 'combobox-modal-header';
         const title = document.createElement('h3');
@@ -383,7 +393,9 @@ class DialogManager {
         cancelBtn.className = 'btn-cancel';
         cancelBtn.type = 'button';
         cancelBtn.textContent = 'Cancelar';
-        cancelBtn.addEventListener('click', closeModal);
+        cancelBtn.addEventListener('click', () => {
+            closeModal();
+        });
 
         const applyBtn = document.createElement('button');
         applyBtn.className = 'btn-apply';
@@ -392,7 +404,9 @@ class DialogManager {
         
         applyBtn.addEventListener('click', () => {
             closeModal();
-            onSelected(selectedInModal);
+            if (onSelected) {
+                onSelected(selectedInModal);
+            }
         });
 
         footer.appendChild(cancelBtn);
@@ -406,12 +420,14 @@ class DialogManager {
         modalOverlay.appendChild(modal);
         document.body.appendChild(modalOverlay);
 
+        // Mostrar com animação
+        setTimeout(() => {
+            modalOverlay.classList.add('show');
+        }, 10);
+
         searchInput.focus();
 
-        const closeModal = () => {
-            modalOverlay.remove();
-        };
-
+        // Event listeners
         modalOverlay.addEventListener('click', (e) => {
             if (e.target === modalOverlay) {
                 closeModal();

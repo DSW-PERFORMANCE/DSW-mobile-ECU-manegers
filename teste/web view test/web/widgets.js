@@ -151,7 +151,17 @@ class WidgetManager {
             const validValue = this.clamp(parseFloat(e.target.value), widget.min, widget.max);
             e.target.value = validValue;
             valueDisplay.querySelector('.value-badge').textContent = `${validValue}${widget.unit || ''}`;
-            onValueChange(widget.command, validValue);
+            
+            // Route through Communication Bridge for centralized command processing
+            if (window.communicationBridge) {
+                window.communicationBridge.execute(widget.command, validValue).catch(err => {
+                    console.error('Communication Bridge error:', err);
+                    onValueChange(widget.command, validValue);
+                });
+            } else {
+                onValueChange(widget.command, validValue);
+            }
+            
             sliderChangeInProgress = true;
         });
 
@@ -214,7 +224,17 @@ class WidgetManager {
         const updateValue = (newValue) => {
             const validValue = this.clamp(newValue, widget.min, widget.max);
             input.value = validValue;
-            onValueChange(widget.command, validValue);
+            
+            // Route through Communication Bridge for centralized command processing
+            if (window.communicationBridge) {
+                window.communicationBridge.execute(widget.command, validValue).catch(err => {
+                    console.error('Communication Bridge error:', err);
+                    onValueChange(widget.command, validValue);
+                });
+            } else {
+                onValueChange(widget.command, validValue);
+            }
+            
             // Push to global history after value change
             if (window.globalHistoryManager) {
                 window.globalHistoryManager.push(window.globalHistoryManager.createSnapshot());
@@ -275,7 +295,16 @@ class WidgetManager {
         });
 
         select.addEventListener('change', (e) => {
-            onValueChange(widget.command, e.target.value);
+            // Route through Communication Bridge for centralized command processing
+            if (window.communicationBridge) {
+                window.communicationBridge.execute(widget.command, e.target.value).catch(err => {
+                    console.error('Communication Bridge error:', err);
+                    onValueChange(widget.command, e.target.value);
+                });
+            } else {
+                onValueChange(widget.command, e.target.value);
+            }
+            
             // Push to global history after value change
             if (window.globalHistoryManager) {
                 window.globalHistoryManager.push(window.globalHistoryManager.createSnapshot());
@@ -312,8 +341,15 @@ class WidgetManager {
                     displayButton.textContent = selected.label;
                 }
                 
-                // Call callback
-                onValueChange(widget.command, selectedValue);
+                // Route through Communication Bridge for centralized command processing
+                if (window.communicationBridge) {
+                    window.communicationBridge.execute(widget.command, selectedValue).catch(err => {
+                        console.error('Communication Bridge error:', err);
+                        onValueChange(widget.command, selectedValue);
+                    });
+                } else {
+                    onValueChange(widget.command, selectedValue);
+                }
                 
                 // Push to global history
                 if (window.globalHistoryManager) {
@@ -353,7 +389,17 @@ class WidgetManager {
         input.addEventListener('change', (e) => {
             // Use boolean values to match defaults and savedValues (avoids type mismatch)
             const value = !!e.target.checked;
-            onValueChange(widget.command, value);
+            
+            // Route through Communication Bridge for centralized command processing
+            if (window.communicationBridge) {
+                window.communicationBridge.execute(widget.command, value).catch(err => {
+                    console.error('Communication Bridge error:', err);
+                    onValueChange(widget.command, value);
+                });
+            } else {
+                onValueChange(widget.command, value);
+            }
+            
             // Push to global history after value change
             if (window.globalHistoryManager) {
                 window.globalHistoryManager.push(window.globalHistoryManager.createSnapshot());
@@ -399,7 +445,16 @@ class WidgetManager {
 
             input.addEventListener('change', (e) => {
                 if (e.target.checked) {
-                    onValueChange(widget.command, option.value);
+                    // Route through Communication Bridge for centralized command processing
+                    if (window.communicationBridge) {
+                        window.communicationBridge.execute(widget.command, option.value).catch(err => {
+                            console.error('Communication Bridge error:', err);
+                            onValueChange(widget.command, option.value);
+                        });
+                    } else {
+                        onValueChange(widget.command, option.value);
+                    }
+                    
                     // Push to global history after value change
                     if (window.globalHistoryManager) {
                         window.globalHistoryManager.push(window.globalHistoryManager.createSnapshot());
@@ -484,8 +539,19 @@ class WidgetManager {
 
                 // Função para enviar comando imediatamente (sem valor de soltar)
                 const sendCommandImmediate = (command) => {
-                    if (command && window.ecuCommunication) {
-                        console.log(`[ACTION BUTTON] Enviando: ${command}`);
+                    if (!command) return;
+                    
+                    // Route through Communication Bridge for centralized command processing
+                    if (window.communicationBridge) {
+                        window.communicationBridge.execute(command, 1).catch(err => {
+                            console.error('Communication Bridge error:', err);
+                            if (window.ecuCommunication) {
+                                console.log(`[ACTION BUTTON] Fallback direto: ${command}`);
+                                window.ecuCommunication.sendCommand(command, 1);
+                            }
+                        });
+                    } else if (window.ecuCommunication) {
+                        console.log(`[ACTION BUTTON] Enviando direto: ${command}`);
                         window.ecuCommunication.sendCommand(command, 1);
                     }
                 };
@@ -580,7 +646,15 @@ class WidgetManager {
         const sendCommand = (colorValue) => {
             // Envia APENAS o comando + valor, sem alterar widgets
             // Simula envio direto para ECU (bypass do histórico)
-            if (window.ecuCommunication) {
+            if (window.communicationBridge) {
+                window.communicationBridge.execute(widget.command, colorValue).catch(err => {
+                    console.error('Communication Bridge error:', err);
+                    if (window.ecuCommunication) {
+                        console.log(`[COLOR TOGGLE] Fallback direto: ${widget.command}=${colorValue}`);
+                        window.ecuCommunication.sendCommand(widget.command, colorValue);
+                    }
+                });
+            } else if (window.ecuCommunication) {
                 console.log(`[COLOR TOGGLE] Enviando direto: ${widget.command}=${colorValue}`);
                 window.ecuCommunication.sendCommand(widget.command, colorValue);
             }
@@ -689,7 +763,16 @@ class WidgetManager {
                 // Listener para mudança
                 input.addEventListener('change', (e) => {
                     const newValue = e.target.checked ? valueOn : valueOff;
-                    onValueChange(checkboxConfig.command, newValue);
+                    
+                    // Route through Communication Bridge for centralized command processing
+                    if (window.communicationBridge) {
+                        window.communicationBridge.execute(checkboxConfig.command, newValue).catch(err => {
+                            console.error('Communication Bridge error:', err);
+                            onValueChange(checkboxConfig.command, newValue);
+                        });
+                    } else {
+                        onValueChange(checkboxConfig.command, newValue);
+                    }
                     
                     // Push to global history
                     if (window.globalHistoryManager) {

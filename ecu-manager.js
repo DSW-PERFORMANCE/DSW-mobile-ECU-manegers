@@ -205,6 +205,11 @@ class ECUManager {
             this.savedValues[k] = this._normalizeValue(this.currentValues[k]);
         });
 
+        // CRITICAL: Atualiza table3d widgets PRIMEIRO, antes de fazer anything else
+        if (window.widgetManager && window.widgetManager.updateTable3DData) {
+            window.widgetManager.updateTable3DData(this.currentValues);
+        }
+
         setTimeout(() => {
             const widgetContainers = document.querySelectorAll('.widget-container');
             widgetContainers.forEach(container => {
@@ -348,11 +353,18 @@ class ECUManager {
         this.screenModified = false;
         this.updateBreadcrumb();
 
-        // Atualiza table3d widgets com novos dados
-        if (window.widgetManager) {
+        // Normalize saved values after reload
+        this.savedValues = {};
+        Object.keys(this.currentValues).forEach(k => {
+            this.savedValues[k] = this._normalizeValue(this.currentValues[k]);
+        });
+
+        // CRITICAL: Atualiza table3d widgets com novos dados PRIMEIRO
+        if (window.widgetManager && window.widgetManager.updateTable3DData) {
             window.widgetManager.updateTable3DData(this.currentValues);
         }
 
+        // DEPOIS recarrega os widgets da tela para sincronizar tudo
         if (this.currentNodeId) {
             const node = this.findNodeById(this.currentNodeId);
             if (node && node.widgets) {

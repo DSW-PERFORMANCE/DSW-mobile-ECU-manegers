@@ -205,6 +205,11 @@ class ECUManager {
             this.savedValues[k] = this._normalizeValue(this.currentValues[k]);
         });
 
+        // CRITICAL: Atualiza table3d widgets PRIMEIRO, antes de fazer anything else
+        if (window.widgetManager && window.widgetManager.updateTable3DData) {
+            window.widgetManager.updateTable3DData(this.currentValues);
+        }
+
         setTimeout(() => {
             const widgetContainers = document.querySelectorAll('.widget-container');
             widgetContainers.forEach(container => {

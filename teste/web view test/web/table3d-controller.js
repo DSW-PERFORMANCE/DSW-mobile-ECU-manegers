@@ -36,11 +36,37 @@ class Table3DController {
         // Agora sim, fazer parseData com this.min já definido
         this.data = this.parseData(currentValue, widget);
         
+        // Inicializa os eixos com valores padrão OU pulled da ECU
+        this.initializeAxes(currentValue);
+        
+        // Envia os eixos inicialmente (importante para garantir que mesmo não editados, são enviados)
+        this.sendInitialAxisValues();
+        
         // Debug: verificar dados recebidos
         console.log(`[Table3D] Inicializado com ${this.rows}x${this.cols}`);
         console.log(`[Table3D] rowCommands:`, this.rowCommands);
         console.log(`[Table3D] Dados recebidos:`, currentValue);
         console.log(`[Table3D] Dados parseados:`, this.data);
+    }
+
+    /**
+     * Envia os valores iniciais dos eixos (chamado uma única vez no constructor)
+     * Garante que mesmo não editados, os eixos sejam inicializados com padrão ou valor pulled
+     */
+    sendInitialAxisValues() {
+        // Envia X Axis se configurado
+        if (this.xAxis && this.xAxis.enabled && this.xAxis.command && this.xAxisValues.length > 0) {
+            const xValues = this.xAxisValues.map(v => v.toFixed(2)).join(',');
+            console.log(`[Table3D] Enviando Eixo X inicial: ${this.xAxis.command} = ${xValues.substring(0, 50)}...`);
+            this.onValueChange(this.xAxis.command, xValues);
+        }
+
+        // Envia Y Axis se configurado
+        if (this.yAxis && this.yAxis.enabled && this.yAxis.command && this.yAxisValues.length > 0) {
+            const yValues = this.yAxisValues.map(v => v.toFixed(2)).join(',');
+            console.log(`[Table3D] Enviando Eixo Y inicial: ${this.yAxis.command} = ${yValues.substring(0, 50)}...`);
+            this.onValueChange(this.yAxis.command, yValues);
+        }
     }
 
     /**
@@ -157,7 +183,8 @@ class Table3DController {
     }
 
     /**
-     * Inicializa valores dos eixos (pull automático)
+     * Inicializa valores dos eixos (pull automático com tolerância a erros)
+     * IMPORTANTE: Sempre gera valores padrão e tenta fazer pull. Se falhar, usa padrão e MARCA PARA ENVIO.
      */
     initializeAxes(currentValue) {
         // X Axis
@@ -165,21 +192,40 @@ class Table3DController {
             const xMin = this.xAxis.min || 0;
             const xMax = this.xAxis.max || 100;
             const xStep = (xMax - xMin) / (this.cols - 1);
+            
+            // SEMPRE gera valores padrão primeiro
             this.xAxisValues = [];
             for (let i = 0; i < this.cols; i++) {
                 this.xAxisValues.push(xMin + i * xStep);
             }
             
-            // Pull automático se comando existir
+            // Tenta fazer pull automático se comando existir
+            let pullSuccess = false;
             if (this.xAxis.command && currentValue && currentValue[this.xAxis.command]) {
                 try {
-                    const values = currentValue[this.xAxis.command].split(',').map(v => parseFloat(v.trim()));
-                    if (values.length === this.cols) {
-                        this.xAxisValues = values;
+                    const rawValue = currentValue[this.xAxis.command];
+                    if (typeof rawValue === 'string' && rawValue.trim().length > 0) {
+                        const values = rawValue.split(',').map(v => {
+                            const num = parseFloat(v.trim());
+                            return !isNaN(num) ? num : null;
+                        }).filter(v => v !== null);
+                        
+                        // Só aceita se tiver tamanho correto
+                        if (values.length === this.cols) {
+                            this.xAxisValues = values;
+                            pullSuccess = true;
+                            console.log('[Table3D] Eixo X: Pull bem-sucedido');
+                        } else {
+                            console.warn(`[Table3D] Eixo X: Pull retornou ${values.length} valores, esperava ${this.cols}. Usando padrão.`);
+                        }
                     }
                 } catch (e) {
-                    console.warn('Erro ao fazer pull do eixo X:', e);
+                    console.warn('[Table3D] Eixo X: Erro ao fazer pull, usando padrão:', e);
                 }
+            }
+            
+            if (!pullSuccess && this.xAxis.command) {
+                console.log('[Table3D] Eixo X: Usará valores padrão e será enviado');
             }
         }
         
@@ -188,21 +234,40 @@ class Table3DController {
             const yMin = this.yAxis.min || 0;
             const yMax = this.yAxis.max || 100;
             const yStep = (yMax - yMin) / (this.rows - 1);
+            
+            // SEMPRE gera valores padrão primeiro
             this.yAxisValues = [];
             for (let i = 0; i < this.rows; i++) {
                 this.yAxisValues.push(yMin + i * yStep);
             }
             
-            // Pull automático se comando existir
+            // Tenta fazer pull automático se comando existir
+            let pullSuccess = false;
             if (this.yAxis.command && currentValue && currentValue[this.yAxis.command]) {
                 try {
-                    const values = currentValue[this.yAxis.command].split(',').map(v => parseFloat(v.trim()));
-                    if (values.length === this.rows) {
-                        this.yAxisValues = values;
+                    const rawValue = currentValue[this.yAxis.command];
+                    if (typeof rawValue === 'string' && rawValue.trim().length > 0) {
+                        const values = rawValue.split(',').map(v => {
+                            const num = parseFloat(v.trim());
+                            return !isNaN(num) ? num : null;
+                        }).filter(v => v !== null);
+                        
+                        // Só aceita se tiver tamanho correto
+                        if (values.length === this.rows) {
+                            this.yAxisValues = values;
+                            pullSuccess = true;
+                            console.log('[Table3D] Eixo Y: Pull bem-sucedido');
+                        } else {
+                            console.warn(`[Table3D] Eixo Y: Pull retornou ${values.length} valores, esperava ${this.rows}. Usando padrão.`);
+                        }
                     }
                 } catch (e) {
-                    console.warn('Erro ao fazer pull do eixo Y:', e);
+                    console.warn('[Table3D] Eixo Y: Erro ao fazer pull, usando padrão:', e);
                 }
+            }
+            
+            if (!pullSuccess && this.yAxis.command) {
+                console.log('[Table3D] Eixo Y: Usará valores padrão e será enviado');
             }
         }
     }
@@ -956,6 +1021,7 @@ class Table3DController {
     /**
      * Envia atualização dos valores para o widget
      * Cada linha envia um comando separado
+     * IMPORTANTE: SEMPRE envia os eixos, mesmo se não foram editados (apenas puxados ou default)
      */
     sendUpdate() {
         if (this.widget.rowCommands && Array.isArray(this.widget.rowCommands)) {
@@ -965,14 +1031,39 @@ class Table3DController {
             }
         }
 
-        // Também envia os eixos se houver
-        if (this.widget.xAxis && this.widget.xAxis.command && this.xAxisValues.length > 0) {
+        // SEMPRE envia os eixos se configurados (mesmo que valores padrão/puxados sem edição)
+        if (this.xAxis && this.xAxis.enabled && this.xAxis.command) {
+            // Garante que xAxisValues foi inicializado
+            if (this.xAxisValues.length === 0) {
+                console.warn('[Table3D] Eixo X não foi inicializado! Inicializando agora...');
+                const xMin = this.xAxis.min || 0;
+                const xMax = this.xAxis.max || 100;
+                const xStep = (xMax - xMin) / (this.cols - 1);
+                this.xAxisValues = [];
+                for (let i = 0; i < this.cols; i++) {
+                    this.xAxisValues.push(xMin + i * xStep);
+                }
+            }
             const xValues = this.xAxisValues.map(v => v.toFixed(2)).join(',');
-            this.onValueChange(this.widget.xAxis.command, xValues);
+            console.log(`[Table3D] Enviando Eixo X: ${this.xAxis.command} = ${xValues}`);
+            this.onValueChange(this.xAxis.command, xValues);
         }
-        if (this.widget.yAxis && this.widget.yAxis.command && this.yAxisValues.length > 0) {
+
+        if (this.yAxis && this.yAxis.enabled && this.yAxis.command) {
+            // Garante que yAxisValues foi inicializado
+            if (this.yAxisValues.length === 0) {
+                console.warn('[Table3D] Eixo Y não foi inicializado! Inicializando agora...');
+                const yMin = this.yAxis.min || 0;
+                const yMax = this.yAxis.max || 100;
+                const yStep = (yMax - yMin) / (this.rows - 1);
+                this.yAxisValues = [];
+                for (let i = 0; i < this.rows; i++) {
+                    this.yAxisValues.push(yMin + i * yStep);
+                }
+            }
             const yValues = this.yAxisValues.map(v => v.toFixed(2)).join(',');
-            this.onValueChange(this.widget.yAxis.command, yValues);
+            console.log(`[Table3D] Enviando Eixo Y: ${this.yAxis.command} = ${yValues}`);
+            this.onValueChange(this.yAxis.command, yValues);
         }
 
         // Atualiza histórico
@@ -1018,27 +1109,84 @@ class Table3DController {
     redrawTable() {
         if (!this.container) return;
         
-        // Encontra o grid de células
-        const gridDiv = this.container.querySelector('.table3d-grid');
-        if (!gridDiv) return;
+        // Encontra a tabela principal (.table3d-main)
+        const tableElement = this.container.querySelector('.table3d-main');
+        if (!tableElement) return;
         
-        // Reconstrói todas as células
-        gridDiv.innerHTML = '';
+        // Limpa a tabela (mantendo só o header)
+        const headerRow = tableElement.querySelector('.table3d-header-row');
+        tableElement.innerHTML = '';
+        
+        if (headerRow) {
+            tableElement.appendChild(headerRow);
+        }
+        
+        // Reconstrói todas as linhas e células
         for (let row = 0; row < this.data.length; row++) {
+            const rowDiv = document.createElement('div');
+            rowDiv.className = 'table3d-row';
+
+            // Label da linha (valores do eixo Y se disponível)
+            const rowLabel = document.createElement('div');
+            rowLabel.className = 'table3d-row-label';
+            
+            if (this.yAxis && this.yAxis.enabled && this.yAxisValues.length > 0) {
+                const value = this.yAxisValues[row];
+                rowLabel.textContent = value.toFixed(1);
+            } else {
+                rowLabel.textContent = row;
+            }
+            rowDiv.appendChild(rowLabel);
+
+            // Reconstrói as células
             for (let col = 0; col < this.data[row].length; col++) {
                 const cellElement = document.createElement('div');
                 cellElement.className = 'table3d-cell';
-                cellElement.id = `cell-${row}-${col}`;
+                cellElement.dataset.row = row;
+                cellElement.dataset.col = col;
                 
                 const value = this.data[row][col];
-                const color = this.getColorForValue(value);
+                const bgColor = this.getColorForValue(value);
+                const textColor = this.getTextColorForBg(bgColor);
                 
-                cellElement.style.backgroundColor = color;
-                cellElement.textContent = value.toFixed(1);
+                cellElement.style.backgroundColor = bgColor;
+                cellElement.style.color = textColor;
+                cellElement.textContent = (typeof value === 'number' ? value : this.min).toFixed(1);
                 
-                gridDiv.appendChild(cellElement);
+                // Re-adiciona event listeners
+                cellElement.addEventListener('click', (e) => {
+                    this.handleCellClick(row, col, cellElement, e);
+                });
+
+                cellElement.addEventListener('dblclick', (e) => {
+                    e.stopPropagation();
+                    this.editCellWithDialog(row, col);
+                });
+
+                cellElement.addEventListener('mousedown', (e) => {
+                    if (e.button === 0) {
+                        this.isDragging = true;
+                        this.dragStart = { row, col };
+                    }
+                });
+
+                cellElement.addEventListener('mouseover', (e) => {
+                    if (this.isDragging && this.dragStart) {
+                        this.selectCellRange(this.dragStart.row, this.dragStart.col, row, col);
+                    }
+                });
+
+                cellElement.addEventListener('mouseenter', () => {
+                    this.showCellTooltip(row, col, cellElement);
+                });
+                
+                rowDiv.appendChild(cellElement);
             }
+            tableElement.appendChild(rowDiv);
         }
+        
+        // Atualiza a referência ao elemento da tabela
+        this.tableElement = tableElement;
         
         console.log('[Table3D] Tabela redesenhada com sucesso!');
     }
