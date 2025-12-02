@@ -62,6 +62,7 @@
     let editMode = false;
     let backupElements = null;
     let blinkIntervals = {};
+    let dashboardButtonsConfig = [];
 
     function loadElements() {
         try {
@@ -74,6 +75,14 @@
         }
     }
 
+    function loadDashboardButtonsConfig() {
+        // Carrega configuração de botões do su.json via ecu-manager
+        if (window.ecuManager && window.ecuManager.config && window.ecuManager.config.dashboardButtons) {
+            dashboardButtonsConfig = window.ecuManager.config.dashboardButtons;
+            console.log('Dashboard buttons config loaded:', dashboardButtonsConfig);
+        }
+    }
+
     function saveElements(list) {
         try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
@@ -83,6 +92,11 @@
     }
 
     elements = loadElements();
+
+    // Aguardar carregamento da configuração do ecu-manager
+    setTimeout(() => {
+        loadDashboardButtonsConfig();
+    }, 500);
 
     function createGaugeElement(e) {
         const wrapper = document.createElement('div');
@@ -464,12 +478,249 @@
         return wrapper;
     }
 
+    function createButtonElement(e) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'dashboard-marker';
+        wrapper.dataset.id = e.id;
+        wrapper.style.left = (e.pos && e.pos.x != null ? e.pos.x : 50) + '%';
+        wrapper.style.top = (e.pos && e.pos.y != null ? e.pos.y : 50) + '%';
+        wrapper.style.width = 'auto';
+        wrapper.style.height = 'auto';
+
+        // Procura configuração do botão no su.json
+        const buttonConfig = dashboardButtonsConfig.find(btn => btn.id === e.buttonConfigId);
+        if (!buttonConfig) {
+            console.warn(`Button config not found for ${e.buttonConfigId}`);
+            return wrapper;
+        }
+
+        // Função auxiliar para converter cor por nome
+        function getColorValue(colorName) {
+            const colorMap = {
+                'red': '#8B0000',
+                'green': '#22c55e',
+                'blue': '#3b82f6',
+                'yellow': '#eab308',
+                'purple': '#a855f7',
+                'orange': '#f97316'
+            };
+            return colorMap[colorName] || colorName;
+        }
+
+        // Usar nome/ícone customizado do elemento, ou padrão do config
+        const buttonTitle = e.customLabel || buttonConfig.title;
+        const buttonIcon = e.customIcon || buttonConfig.icon;
+        let buttonColor = e.customColor || buttonConfig.color;
+        let buttonColorOn = e.customColorOn || buttonConfig.colorOn;
+        let buttonIconOn = e.customIconOn || buttonConfig.iconOn;
+
+        const button = document.createElement('button');
+        button.style.padding = '12px 24px';
+        button.style.borderRadius = '8px';
+        button.style.border = '2px solid';
+        button.style.fontSize = '14px';
+        button.style.fontWeight = '600';
+        button.style.cursor = 'pointer';
+        button.style.display = 'flex';
+        button.style.alignItems = 'center';
+        button.style.justifyContent = 'center';
+        button.style.gap = '8px';
+        button.style.transition = 'all 0.2s ease';
+        button.style.color = 'white';
+        button.style.background = getColorValue(buttonColor);
+        button.style.borderColor = getColorValue(buttonColor);
+        button.style.boxShadow = `0 4px 12px rgba(0,0,0,0.3)`;
+
+        // Para stateful_toggle ou value fixo, armazenar estado no wrapper
+        if (buttonConfig.mode === 'stateful_toggle' || buttonConfig.mode === 'stateful_value') {
+            wrapper._isActive = false;
+            wrapper._currentIcon = buttonIcon;
+            wrapper._currentColor = buttonColor;
+        }
+
+        button.addEventListener('pointerdown', async (ev) => {
+            ev.preventDefault();
+            button.style.transform = 'scale(0.95)';
+            button.style.boxShadow = '0 2px 6px rgba(0,0,0,0.3)';
+
+            // Modo press_only: comando só ao apertar
+            if (buttonConfig.mode === 'press_only' && buttonConfig.commandPress) {
+                if (window.ecuCommunication && window.ecuCommunication.sendCommand) {
+                    window.ecuCommunication.sendCommand(buttonConfig.commandPress);
+                }
+            }
+
+            // Modo value: enviar valores ao apertar
+            if (buttonConfig.mode === 'value' && buttonConfig.valuePressCommand) {
+                if (window.ecuCommunication && window.ecuCommunication.sendCommand) {
+                    window.ecuCommunication.sendCommand(buttonConfig.valuePressCommand);
+                }
+            }
+
+            // Modo stateful_value: um comando que envia valores diferentes (apertar vs soltar)
+            if (buttonConfig.mode === 'stateful_value' && buttonConfig.command && buttonConfig.valuePress !== undefined) {
+                wrapper._isActive = true;
+                if (window.ecuCommunication && window.ecuCommunication.sendCommand) {
+                    const cmdWithValue = buttonConfig.command + '=' + buttonConfig.valuePress;
+                    window.ecuCommunication.sendCommand(cmdWithValue);
+                }
+                updateStatefulButton();
+            }
+
+            // Modo press_release: comando ao apertar
+            if (buttonConfig.mode === 'press_release' && buttonConfig.commandPress) {
+                if (window.ecuCommunication && window.ecuCommunication.sendCommand) {
+                    window.ecuCommunication.sendCommand(buttonConfig.commandPress);
+                }
+            }
+
+            // Modo stateful_toggle: sincronizar estado antes de alternar
+            if (buttonConfig.mode === 'stateful_toggle' && buttonConfig.command && buttonConfig.valueOn !== undefined && buttonConfig.valueOff !== undefined) {
+                // Marcar que está processando para evitar múltiplas requisições
+                if (wrapper._processingToggle) return;
+                wrapper._processingToggle = true;
+                
+                try {
+                    if (window.ecuCommunication && window.ecuCommunication.queryCommand) {
+                        const currentValue = await window.ecuCommunication.queryCommand(buttonConfig.command);
+                        wrapper._isActive = currentValue !== buttonConfig.valueOff;
+                        
+                        // Alternar para o próximo estado
+                        wrapper._isActive = !wrapper._isActive;
+                        
+                        const valueToSend = wrapper._isActive ? buttonConfig.valueOn : buttonConfig.valueOff;
+                        const cmdWithValue = buttonConfig.command + '=' + valueToSend;
+                        
+                        if (window.ecuCommunication && window.ecuCommunication.sendCommand) {
+                            window.ecuCommunication.sendCommand(cmdWithValue);
+                        }
+                        
+                        // Atualizar visual do botão
+                        updateStatefulButton();
+                    }
+                } catch (err) {
+                    console.error('Error querying button state:', err);
+                } finally {
+                    wrapper._processingToggle = false;
+                }
+            }
+
+            // Modo toggle: alternar visual
+            if (buttonConfig.mode === 'toggle') {
+                button.classList.add('active');
+                button.style.filter = 'brightness(1.3)';
+            }
+        });
+
+        button.addEventListener('pointerup', (ev) => {
+            ev.preventDefault();
+            button.style.transform = 'scale(1)';
+            button.style.boxShadow = `0 4px 12px rgba(0,0,0,0.3)`;
+
+            // Modo press_release: comando ao soltar
+            if (buttonConfig.mode === 'press_release' && buttonConfig.commandRelease) {
+                if (window.ecuCommunication && window.ecuCommunication.sendCommand) {
+                    window.ecuCommunication.sendCommand(buttonConfig.commandRelease);
+                }
+            }
+
+            // Modo value: enviar valor ao soltar
+            if (buttonConfig.mode === 'value' && buttonConfig.valueReleaseCommand) {
+                if (window.ecuCommunication && window.ecuCommunication.sendCommand) {
+                    window.ecuCommunication.sendCommand(buttonConfig.valueReleaseCommand);
+                }
+            }
+
+            // Modo stateful_value: enviar valor de soltar
+            if (buttonConfig.mode === 'stateful_value' && buttonConfig.command && buttonConfig.valueRelease !== undefined) {
+                wrapper._isActive = false;
+                if (window.ecuCommunication && window.ecuCommunication.sendCommand) {
+                    const cmdWithValue = buttonConfig.command + '=' + buttonConfig.valueRelease;
+                    window.ecuCommunication.sendCommand(cmdWithValue);
+                }
+                updateStatefulButton();
+            }
+
+            // Modo toggle: alternar estado
+            if (buttonConfig.mode === 'toggle') {
+                button.classList.toggle('active');
+                if (button.classList.contains('active')) {
+                    button.style.filter = 'brightness(1.3)';
+                } else {
+                    button.style.filter = 'brightness(1)';
+                }
+            }
+        });
+
+        button.addEventListener('pointerleave', (ev) => {
+            button.style.transform = 'scale(1)';
+            button.style.boxShadow = `0 4px 12px rgba(0,0,0,0.3)`;
+        });
+
+        button.addEventListener('mouseover', () => {
+            button.style.boxShadow = `0 6px 16px rgba(0,0,0,0.4)`;
+            button.style.transform = 'translateY(-2px)';
+        });
+
+        button.addEventListener('mouseout', () => {
+            if (!button.classList.contains('active')) {
+                button.style.boxShadow = `0 4px 12px rgba(0,0,0,0.3)`;
+                button.style.transform = 'translateY(0)';
+            }
+        });
+
+        // Função para atualizar visual do botão stateful
+        function updateStatefulButton() {
+            // Para stateful_value e stateful_toggle com customização
+            let newIcon = buttonIcon;
+            let newColor = buttonColor;
+            
+            if (wrapper._isActive) {
+                newIcon = buttonIconOn || (buttonConfig.iconOn) || buttonIcon;
+                newColor = buttonColorOn || (buttonConfig.colorOn) || buttonColor;
+            }
+            
+            // Atualizar ícone
+            const iconEl = button.querySelector('i');
+            if (iconEl && newIcon) {
+                iconEl.className = `bi bi-${newIcon}`;
+            }
+            
+            // Atualizar cor
+            const colorValue = getColorValue(newColor);
+            button.style.background = colorValue;
+            button.style.borderColor = colorValue;
+        }
+
+        // Adicionar ícone se configurado
+        if (buttonIcon) {
+            const icon = document.createElement('i');
+            icon.className = `bi bi-${buttonIcon}`;
+            icon.style.fontSize = '18px';
+            button.appendChild(icon);
+        }
+
+        // Adicionar label (título customizado ou padrão)
+        const label = document.createElement('span');
+        label.textContent = buttonTitle;
+        button.appendChild(label);
+
+        wrapper.appendChild(button);
+        wrapper._button = button;
+        wrapper._type = 'button';
+        wrapper._tooltip = `${buttonTitle}\n${buttonConfig.description}`;
+        button.title = wrapper._tooltip;
+        wrapper._updateStateful = updateStatefulButton;
+        return wrapper;
+    }
+
     function createElement(e) {
         if (e.type === 'bar') return createBarElement(e);
         if (e.type === 'led') return createLEDElement(e);
         if (e.type === 'text') return createTextElement(e);
         if (e.type === 'bar-marker') return createBarMarkerElement(e);
         if (e.type === 'conditional-text') return createConditionalTextElement(e);
+        if (e.type === 'button') return createButtonElement(e);
         return createGaugeElement(e);
     }
 
@@ -497,6 +748,11 @@
             const isActive = newValue >= e.threshold;
             el._ledEl.style.background = isActive ? (e.color || '#00FF00') : (e.colorOff || '#333');
             el._ledEl.style.boxShadow = isActive ? `0 0 10px ${e.color || '#00FF00'}` : 'none';
+            // Atualizar ícone se existir
+            const iconEl = el._ledEl.querySelector('i');
+            if (iconEl && e.icon) {
+                iconEl.style.color = isActive ? 'white' : 'rgba(255,255,255,0.5)';
+            }
         } else if (el._type === 'text' && el._textEl) {
             el._textEl.textContent = e.text || e.label || '';
         } else if (el._type === 'conditional-text' && el._textEl) {
@@ -668,6 +924,18 @@
                 preview.style.fontSize = ((e.fontSize || 16) * 0.8) + 'px';
                 preview.style.fontWeight = '600';
                 preview.textContent = 'Condicional';
+            } else if (e.type === 'button') {
+                const scale = (e.sizeScale || 100) / 100;
+                preview.style.width = 'auto';
+                preview.style.height = 'auto';
+                preview.style.padding = (8 * scale) + 'px ' + (16 * scale) + 'px';
+                preview.style.background = e.color || 'var(--primary-red)';
+                preview.style.borderRadius = '6px';
+                preview.style.border = '2px solid white';
+                preview.style.color = 'white';
+                preview.style.fontSize = (12 * scale) + 'px';
+                preview.style.fontWeight = '600';
+                preview.textContent = e.label || 'Botão';
             }
 
             // Label
@@ -802,6 +1070,66 @@
             });
             leftContent.appendChild(removeBtn);
 
+            const showButtonConfigInfo = (btnConfig) => {
+                const infoPanel = leftContent.querySelector('.button-config-info');
+                if (infoPanel) {
+                    infoPanel.remove();
+                }
+
+                const infoPanelDiv = document.createElement('div');
+                infoPanelDiv.className = 'button-config-info';
+                infoPanelDiv.style.padding = '15px';
+                infoPanelDiv.style.background = 'rgba(0,150,200,0.1)';
+                infoPanelDiv.style.borderRadius = '6px';
+                infoPanelDiv.style.marginBottom = '15px';
+                infoPanelDiv.style.border = '1px solid rgba(0,150,200,0.3)';
+
+                const titleDiv = document.createElement('div');
+                titleDiv.style.fontSize = '14px';
+                titleDiv.style.fontWeight = '600';
+                titleDiv.style.color = 'var(--light-red)';
+                titleDiv.style.marginBottom = '8px';
+                titleDiv.textContent = `📋 ${btnConfig.title}`;
+                infoPanelDiv.appendChild(titleDiv);
+
+                const descDiv = document.createElement('div');
+                descDiv.style.fontSize = '12px';
+                descDiv.style.color = 'var(--text-light)';
+                descDiv.style.marginBottom = '12px';
+                descDiv.textContent = btnConfig.description;
+                infoPanelDiv.appendChild(descDiv);
+
+                const opcionesLabel = document.createElement('div');
+                opcionesLabel.style.fontSize = '12px';
+                opcionesLabel.style.fontWeight = '600';
+                opcionesLabel.style.color = '#00c8ff';
+                opcionesLabel.style.marginBottom = '8px';
+                opcionesLabel.textContent = '🎯 Opções Disponíveis:';
+                infoPanelDiv.appendChild(opcionesLabel);
+
+                if (btnConfig.options && btnConfig.options.length > 0) {
+                    btnConfig.options.forEach((opt, idx) => {
+                        const optDiv = document.createElement('div');
+                        optDiv.style.fontSize = '11px';
+                        optDiv.style.color = '#e0e0e0';
+                        optDiv.style.marginBottom = '6px';
+                        optDiv.style.paddingLeft = '12px';
+                        optDiv.textContent = `• ${opt.label}: ${opt.description}`;
+                        infoPanelDiv.appendChild(optDiv);
+                    });
+                }
+
+                leftContent.insertBefore(infoPanelDiv, leftContent.querySelector('h3').nextSibling);
+            };
+
+            // Se for botão e tiver config, mostrar informações iniciais
+            if (e.type === 'button' && e.buttonConfigId) {
+                const btnConfig = dashboardButtonsConfig.find(btn => btn.id === e.buttonConfigId);
+                if (btnConfig) {
+                    setTimeout(() => showButtonConfigInfo(btnConfig), 100);
+                }
+            }
+
             const commonFields = [
                 { label: 'Label', key: 'label', type: 'text' },
                 { label: 'Tipo', key: 'type', type: 'select', options: ['gauge', 'bar', 'bar-marker', 'led', 'text', 'conditional-text', 'button'] },
@@ -845,11 +1173,12 @@
             ];
 
             const buttonFields = [
-                { label: 'Modo', key: 'mode', type: 'select', options: ['press_release', 'toggle', 'value'] },
-                { label: 'Comando ao Apertar', key: 'commandPress', type: 'text', placeholder: 'Ex: test_press' },
-                { label: 'Comando ao Soltar', key: 'commandRelease', type: 'text', placeholder: 'Ex: test_release' },
-                { label: 'Valor ao Apertar', key: 'valuePressCommand', type: 'text', placeholder: 'Comando+valor, ex: motor_cmd/1000' },
-                { label: 'Valor ao Soltar', key: 'valueReleaseCommand', type: 'text', placeholder: 'Comando+valor, ex: motor_cmd/0' }
+                { label: 'Botão Pré-definido', key: 'buttonConfigId', type: 'select', options: [] },
+                { label: 'Título Customizado', key: 'customLabel', type: 'text', placeholder: 'Deixe vazio para usar padrão' },
+                { label: 'Ícone Customizado (OFF)', key: 'customIcon', type: 'text', placeholder: 'Ex: heart, star, etc (deixe vazio para padrão)' },
+                { label: 'Cor Customizada (OFF)', key: 'customColor', type: 'select', options: ['red', 'green', 'blue', 'yellow', 'purple', 'orange'] },
+                { label: 'Ícone Customizado (ON)', key: 'customIconOn', type: 'text', placeholder: 'Para estado ativo (stateful only)' },
+                { label: 'Cor Customizada (ON)', key: 'customColorOn', type: 'select', options: ['red', 'green', 'blue', 'yellow', 'purple', 'orange'] }
             ];
 
             let fieldsToShow = commonFields;
@@ -864,6 +1193,15 @@
                 fieldsToShow = [...fieldsToShow, ...textFields];
             } else if (e.type === 'conditional-text') {
                 fieldsToShow = [...fieldsToShow, ...conditionalTextFields];
+            } else if (e.type === 'button') {
+                fieldsToShow = [...fieldsToShow, ...buttonFields];
+                // Popular opções de botões do su.json
+                if (buttonFields[0] && dashboardButtonsConfig.length > 0) {
+                    buttonFields[0].options = dashboardButtonsConfig.map(btn => ({
+                        value: btn.id,
+                        label: btn.title
+                    }));
+                }
             }
 
             fieldsToShow.forEach(f => {
@@ -882,18 +1220,45 @@
                 let inp;
                 if (f.type === 'select') {
                     inp = document.createElement('select');
-                    f.options.forEach(opt => {
-                        const optEl = document.createElement('option');
-                        optEl.value = opt;
-                        optEl.textContent = opt;
-                        optEl.selected = e[f.key] === opt;
-                        inp.appendChild(optEl);
-                    });
+                    // Se for campo de seleção de botão, popular com opções
+                    if (f.key === 'buttonConfigId' && dashboardButtonsConfig.length > 0) {
+                        dashboardButtonsConfig.forEach(btnConfig => {
+                            const optEl = document.createElement('option');
+                            optEl.value = btnConfig.id;
+                            optEl.textContent = btnConfig.title;
+                            optEl.selected = e[f.key] === btnConfig.id;
+                            inp.appendChild(optEl);
+                        });
+                    } else {
+                        // Opções regulares
+                        f.options.forEach(opt => {
+                            const optEl = document.createElement('option');
+                            // Se opt é um objeto, usar value e label
+                            const value = typeof opt === 'string' ? opt : opt.value;
+                            const label = typeof opt === 'string' ? opt : opt.label;
+                            optEl.value = value;
+                            optEl.textContent = label;
+                            optEl.selected = e[f.key] === value;
+                            inp.appendChild(optEl);
+                        });
+                    }
                     inp.style.padding = '6px 8px';
                     inp.style.background = 'var(--bg-dark)';
                     inp.style.border = '1px solid var(--border-color)';
                     inp.style.color = 'var(--text-light)';
                     inp.style.borderRadius = '4px';
+
+                    // Se for campo de botão, adicionar listener para mostrar informações
+                    if (f.key === 'buttonConfigId') {
+                        inp.addEventListener('change', () => {
+                            elements[idx][f.key] = inp.value;
+                            // Mostrar informações do botão selecionado
+                            const selectedBtnConfig = dashboardButtonsConfig.find(btn => btn.id === inp.value);
+                            if (selectedBtnConfig) {
+                                showButtonConfigInfo(selectedBtnConfig);
+                            }
+                        });
+                    }
                 } else if (f.type === 'checkbox') {
                     inp = document.createElement('input');
                     inp.type = 'checkbox';
@@ -1052,7 +1417,7 @@
             typeSelect.style.background = 'var(--bg-dark)';
             typeSelect.style.color = 'var(--text-light)';
             
-            ['gauge', 'bar', 'bar-marker', 'led', 'text', 'conditional-text'].forEach(t => {
+            ['gauge', 'bar', 'bar-marker', 'led', 'text', 'conditional-text', 'button'].forEach(t => {
                 const opt = document.createElement('option');
                 opt.value = t;
                 opt.textContent = t;
@@ -1100,6 +1465,15 @@
                     newElem = { ...baseConfig, text: 'Novo Texto', fontSize: 14, fontWeight: '400', color: 'var(--text-light)' };
                 } else if (type === 'conditional-text') {
                     newElem = { ...baseConfig, value: 0, fontSize: 16, fontWeight: '600', conditions: [] };
+                } else if (type === 'button') {
+                    // Para botões, usar o primeiro botão configurado como padrão
+                    const defaultBtn = dashboardButtonsConfig.length > 0 ? dashboardButtonsConfig[0] : null;
+                    if (defaultBtn) {
+                        newElem = { ...baseConfig, buttonConfigId: defaultBtn.id };
+                    } else {
+                        console.warn('Nenhuma configuração de botão disponível no su.json');
+                        newElem = { ...baseConfig, buttonConfigId: null };
+                    }
                 }
 
                 elements.push(newElem);
@@ -1154,6 +1528,12 @@
             footer.style.display = editMode ? 'flex' : 'none';
         }
 
+        // Hide controls-area when viewing dashboard (only in view mode)
+        const controlsArea = document.querySelector('.controls-area');
+        if (controlsArea) {
+            controlsArea.style.display = editMode ? 'flex' : 'none';
+        }
+
         if (editMode) {
             backupElements = JSON.parse(JSON.stringify(elements));
             renderEditMode();
@@ -1175,6 +1555,12 @@
         const footer = document.getElementById('dashboard-edit-footer');
         if (footer) {
             footer.style.display = 'none';
+        }
+
+        // Restore controls-area visibility
+        const controlsArea = document.querySelector('.controls-area');
+        if (controlsArea) {
+            controlsArea.style.display = 'flex';
         }
 
         // Stop all blinks

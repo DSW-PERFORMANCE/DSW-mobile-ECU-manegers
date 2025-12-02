@@ -483,5 +483,153 @@
         }
       ]
     }
+  ],
+  "dashboardButtons": [
+    {
+      "id": "btn_motor_test",
+      "title": "Teste Motor",
+      "description": "Ativa/desativa o motor de teste",
+      "icon": "power",
+      "color": "red",
+      "mode": "press_release",
+      "commandPress": "motor/start",
+      "commandRelease": "motor/stop",
+      "options": [
+        {
+          "label": "Ligar Motor",
+          "description": "Ativa o motor de teste"
+        },
+        {
+          "label": "Desligar Motor",
+          "description": "Desativa o motor de teste"
+        }
+      ]
+    },
+    {
+      "id": "btn_fuel_pump",
+      "title": "Bomba Combustível",
+      "description": "Controla a bomba de combustível com velocidade variável",
+      "icon": "fuel-pump",
+      "color": "green",
+      "mode": "value",
+      "valuePressCommand": "fuel_pump/max",
+      "valueReleaseCommand": "fuel_pump/min",
+      "options": [
+        {
+          "label": "Máxima Velocidade",
+          "description": "Ativa bomba em velocidade máxima"
+        },
+        {
+          "label": "Parar Bomba",
+          "description": "Desativa a bomba de combustível"
+        }
+      ]
+    },
+    {
+      "id": "btn_ignition_test",
+      "title": "Teste Ignição",
+      "description": "Testa o sistema de ignição do motor",
+      "icon": "lightning",
+      "color": "yellow",
+      "mode": "toggle",
+      "commandPress": "ignition/test_on",
+      "commandRelease": "ignition/test_off",
+      "options": [
+        {
+          "label": "Ignição Ativa",
+          "description": "Ativa o sistema de teste de ignição"
+        },
+        {
+          "label": "Ignição Inativa",
+          "description": "Desativa o teste de ignição"
+        }
+      ]
+    },
+    {
+      "id": "btn_diagnostics",
+      "title": "Diagnósticos",
+      "description": "Executa rotina completa de diagnósticos do motor",
+      "icon": "tools",
+      "color": "blue",
+      "mode": "press_release",
+      "commandPress": "diagnostics/start",
+      "commandRelease": "diagnostics/stop",
+      "options": [
+        {
+          "label": "Iniciar Diagnósticos",
+          "description": "Começa a rotina de diagnósticos completa"
+        },
+        {
+          "label": "Parar Diagnósticos",
+          "description": "Interrompe a rotina de diagnósticos"
+        }
+      ]
+    },
+    {
+      "id": "btn_data_logging",
+      "title": "Registro de Dados",
+      "description": "Controla o registro de dados do motor em tempo real",
+      "icon": "file-earmark-text",
+      "color": "purple",
+      "mode": "toggle",
+      "commandPress": "datalog/start",
+      "commandRelease": "datalog/stop",
+      "options": [
+        {
+          "label": "Iniciar Gravação",
+          "description": "Começa a registrar dados do motor"
+        },
+        {
+          "label": "Parar Gravação",
+          "description": "Interrompe o registro de dados"
+        }
+      ]
+    },
+    {
+      "id": "btn_injection_toggle",
+      "title": "Controle de Injeção",
+      "description": "Alterna o estado da injeção com valores (estateful_toggle)",
+      "icon": "droplet",
+      "color": "red",
+      "colorOn": "green",
+      "iconOn": "check-circle",
+      "mode": "stateful_toggle",
+      "command": "injecao/status",
+      "valueOn": 1,
+      "valueOff": 0,
+      "options": [
+        {
+          "label": "Ativar Injeção",
+          "description": "Liga a injeção do motor"
+        },
+        {
+          "label": "Desativar Injeção",
+          "description": "Desliga a injeção do motor"
+        }
+      ]
+    },
+    {
+      "id": "btn_fan_control",
+      "title": "Controle do Ventilador",
+      "description": "Ventilador com dois níveis (apertar/soltar = velocidades)",
+      "icon": "fan",
+      "color": "blue",
+      "colorOn": "cyan",
+      "iconOn": "fan",
+      "mode": "stateful_value",
+      "command": "fan/speed",
+      "valuePress": 100,
+      "valueRelease": 0,
+      "options": [
+        {
+          "label": "Ventilador Ligado",
+          "description": "Velocidade máxima"
+        },
+        {
+          "label": "Ventilador Desligado",
+          "description": "Parado"
+        }
+      ]
+    }
   ]
 }
