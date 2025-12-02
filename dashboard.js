@@ -1,8 +1,9 @@
 /* dashboard.js
-   Dashboard with configurable elements: Gauge, Bar, LED
-   - Single click: view mode (see values only, no interaction)
-   - Double click: edit mode with drag-to-position on canvas
-   - Persistence: localStorage key 'dsw_dashboard_elements_v1'
+   Dashboard com elementos configuráveis: Gauge, Bar, LED, Texto, Condicional
+   - Tamanho em porcentagem (%)
+   - Single click: view mode (visualização apenas)
+   - Double click: edit mode com drag-to-position
+   - Simulação de tamanho ao arrastar
 */
 (function () {
     const STORAGE_KEY = 'dsw_dashboard_elements_v1';
@@ -24,9 +25,10 @@
             value: 1200,
             min: 0,
             max: 8000,
-            size: 140,
+            sizeScale: 100,
             color: '#8B0000',
-            pos: { x: 20, y: 40 }
+            icon: 'speedometer2',
+            pos: { x: 15, y: 30 }
         },
         {
             id: 'speed_gauge',
@@ -35,9 +37,10 @@
             value: 60,
             min: 0,
             max: 300,
-            size: 140,
+            sizeScale: 100,
             color: '#8B0000',
-            pos: { x: 80, y: 40 }
+            icon: 'speedometer',
+            pos: { x: 50, y: 30 }
         },
         {
             id: 'engine_led',
@@ -49,8 +52,9 @@
             colorOff: '#333333',
             blink: true,
             blinkRate: 500,
-            size: 50,
-            pos: { x: 50, y: 75 }
+            sizeScale: 100,
+            icon: 'power',
+            pos: { x: 80, y: 30 }
         }
     ];
 
@@ -86,17 +90,21 @@
         wrapper.dataset.id = e.id;
         wrapper.style.left = (e.pos && e.pos.x != null ? e.pos.x : 50) + '%';
         wrapper.style.top = (e.pos && e.pos.y != null ? e.pos.y : 50) + '%';
-        wrapper.style.width = (e.size || 120) + 'px';
-        wrapper.style.height = (e.size || 120) + 'px';
+        
+        const scale = (e.sizeScale || 100) / 100;
+        const baseSizePx = 120;
+        const sizePx = baseSizePx * scale;
+        wrapper.style.width = sizePx + 'px';
+        wrapper.style.height = sizePx + 'px';
 
-        const size = e.size || 120;
+        const size = 120;
         const radius = (size / 2) - 15;
         const center = size / 2;
 
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         svg.setAttribute('viewBox', `0 0 ${size} ${size}`);
-        svg.setAttribute('width', size);
-        svg.setAttribute('height', size);
+        svg.setAttribute('width', '100%');
+        svg.setAttribute('height', '100%');
         svg.style.position = 'absolute';
         svg.style.top = '0';
         svg.style.left = '0';
@@ -167,21 +175,45 @@
         needle.appendChild(centerDot);
         svg.appendChild(needle);
 
+        // Ícone se configurado
+        if (e.icon) {
+            const iconDiv = document.createElement('div');
+            iconDiv.style.fontSize = '30%';
+            iconDiv.style.position = 'absolute';
+            iconDiv.style.top = '50%';
+            iconDiv.style.left = '50%';
+            iconDiv.style.transform = 'translate(-50%, -50%)';
+            iconDiv.style.color = (e.color || 'var(--primary-red)');
+            iconDiv.style.opacity = '0.3';
+            iconDiv.style.pointerEvents = 'none';
+            iconDiv.style.width = '30%';
+            iconDiv.style.height = '30%';
+            iconDiv.style.display = 'flex';
+            iconDiv.style.alignItems = 'center';
+            iconDiv.style.justifyContent = 'center';
+            const icon = document.createElement('i');
+            icon.className = `bi bi-${e.icon}`;
+            icon.style.fontSize = 'inherit';
+            iconDiv.appendChild(icon);
+            svg.appendChild(iconDiv);
+        }
+
         const textBox = document.createElement('div');
         textBox.style.position = 'absolute';
         textBox.style.bottom = '8px';
         textBox.style.width = '100%';
         textBox.style.textAlign = 'center';
         textBox.style.pointerEvents = 'none';
+        textBox.style.fontSize = '60%';
 
         const label = document.createElement('div');
         label.className = 'marker-label';
-        label.style.fontSize = '11px';
+        label.style.fontSize = 'inherit';
         label.textContent = e.label || e.id;
 
         const value = document.createElement('div');
         value.className = 'marker-value';
-        value.style.fontSize = '14px';
+        value.style.fontSize = '120%';
         value.style.fontWeight = '700';
         value.textContent = e.value.toFixed(1);
 
@@ -202,8 +234,12 @@
         wrapper.dataset.id = e.id;
         wrapper.style.left = (e.pos && e.pos.x != null ? e.pos.x : 50) + '%';
         wrapper.style.top = (e.pos && e.pos.y != null ? e.pos.y : 50) + '%';
-        wrapper.style.width = '120px';
-        wrapper.style.height = '60px';
+        
+        const scale = (e.sizeScale || 100) / 100;
+        const widthPx = 120 * scale;
+        const heightPx = 60 * scale;
+        wrapper.style.width = widthPx + 'px';
+        wrapper.style.height = heightPx + 'px';
 
         const cont = document.createElement('div');
         cont.style.display = 'flex';
@@ -217,7 +253,7 @@
         label.textContent = e.label || e.id;
 
         const bar = document.createElement('div');
-        bar.style.width = '100px';
+        bar.style.width = '100%';
         bar.style.height = '12px';
         bar.style.background = '#333';
         bar.style.border = '1px solid var(--border-color)';
@@ -254,8 +290,12 @@
         wrapper.dataset.id = e.id;
         wrapper.style.left = (e.pos && e.pos.x != null ? e.pos.x : 50) + '%';
         wrapper.style.top = (e.pos && e.pos.y != null ? e.pos.y : 50) + '%';
-        wrapper.style.width = (e.size || 50) + 'px';
-        wrapper.style.height = (e.size + 30) + 'px';
+        
+        const scale = (e.sizeScale || 100) / 100;
+        const baseSizePx = 50;
+        const sizePx = baseSizePx * scale;
+        wrapper.style.width = sizePx + 'px';
+        wrapper.style.height = (sizePx + 30) + 'px';
 
         const cont = document.createElement('div');
         cont.style.display = 'flex';
@@ -269,13 +309,26 @@
         label.textContent = e.label || e.id;
 
         const led = document.createElement('div');
-        const size = e.size || 50;
-        led.style.width = size + 'px';
-        led.style.height = size + 'px';
+        led.style.width = '100%';
+        led.style.aspectRatio = '1/1';
         led.style.borderRadius = '50%';
         led.style.background = e.value >= e.threshold ? (e.color || '#00FF00') : (e.colorOff || '#333');
         led.style.border = '2px solid #555';
         led.style.boxShadow = e.value >= e.threshold ? `0 0 10px ${e.color || '#00FF00'}` : 'none';
+        led.style.display = 'flex';
+        led.style.alignItems = 'center';
+        led.style.justifyContent = 'center';
+        led.style.position = 'relative';
+
+        // Ícone se configurado
+        if (e.icon) {
+            const icon = document.createElement('i');
+            icon.className = `bi bi-${e.icon}`;
+            icon.style.fontSize = '40%';
+            icon.style.color = 'white';
+            icon.style.pointerEvents = 'none';
+            led.appendChild(icon);
+        }
 
         if (e.blink && e.value >= e.threshold) {
             led.id = `led_${e.id}`;
@@ -291,9 +344,132 @@
         return wrapper;
     }
 
+    function createBarMarkerElement(e) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'dashboard-marker';
+        wrapper.dataset.id = e.id;
+        wrapper.style.left = (e.pos && e.pos.x != null ? e.pos.x : 50) + '%';
+        wrapper.style.top = (e.pos && e.pos.y != null ? e.pos.y : 50) + '%';
+        
+        const scale = (e.sizeScale || 100) / 100;
+        const widthPx = 150 * scale;
+        const heightPx = 35 * scale;
+        wrapper.style.width = widthPx + 'px';
+        wrapper.style.height = heightPx + 'px';
+
+        const cont = document.createElement('div');
+        cont.style.display = 'flex';
+        cont.style.flexDirection = 'column';
+        cont.style.gap = '8px';
+        cont.style.padding = '8px';
+        cont.style.width = '100%';
+        cont.style.height = '100%';
+
+        const label = document.createElement('div');
+        label.style.fontSize = '12px';
+        label.style.color = 'var(--text-light)';
+        label.textContent = e.label || e.id;
+
+        const bar = document.createElement('div');
+        bar.style.width = '100%';
+        bar.style.height = '16px';
+        bar.style.background = '#333';
+        bar.style.border = '1px solid var(--border-color)';
+        bar.style.borderRadius = '8px';
+        bar.style.overflow = 'hidden';
+        bar.style.position = 'relative';
+
+        const fill = document.createElement('div');
+        fill.style.height = '100%';
+        fill.style.background = e.color || 'var(--primary-red)';
+        fill.style.width = ((e.value - e.min) / (e.max - e.min)) * 100 + '%';
+        fill.style.transition = 'width 0.3s ease';
+        bar.appendChild(fill);
+
+        const value = document.createElement('div');
+        value.style.fontSize = '11px';
+        value.style.color = 'var(--light-red)';
+        value.style.textAlign = 'center';
+        value.textContent = e.value.toFixed(1) + ' / ' + e.max.toFixed(1);
+
+        cont.appendChild(label);
+        cont.appendChild(bar);
+        cont.appendChild(value);
+        wrapper.appendChild(cont);
+
+        wrapper._fillEl = fill;
+        wrapper._markerEl = bar;
+        wrapper._valueEl = value;
+        wrapper._type = 'bar-marker';
+        return wrapper;
+    }
+
+    function createTextElement(e) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'dashboard-marker';
+        wrapper.dataset.id = e.id;
+        wrapper.style.left = (e.pos && e.pos.x != null ? e.pos.x : 50) + '%';
+        wrapper.style.top = (e.pos && e.pos.y != null ? e.pos.y : 50) + '%';
+        wrapper.style.width = 'auto';
+        wrapper.style.height = 'auto';
+
+        const textDiv = document.createElement('div');
+        textDiv.style.color = e.color || 'var(--text-light)';
+        textDiv.style.fontSize = (e.fontSize || 14) + 'px';
+        textDiv.style.fontWeight = e.fontWeight || '400';
+        textDiv.style.textAlign = 'center';
+        textDiv.style.whiteSpace = 'nowrap';
+        textDiv.textContent = e.text || e.label || '';
+
+        wrapper.appendChild(textDiv);
+        wrapper._textEl = textDiv;
+        wrapper._type = 'text';
+        return wrapper;
+    }
+
+    function createConditionalTextElement(e) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'dashboard-marker';
+        wrapper.dataset.id = e.id;
+        wrapper.style.left = (e.pos && e.pos.x != null ? e.pos.x : 50) + '%';
+        wrapper.style.top = (e.pos && e.pos.y != null ? e.pos.y : 50) + '%';
+        wrapper.style.width = 'auto';
+        wrapper.style.height = 'auto';
+
+        const textDiv = document.createElement('div');
+        textDiv.style.fontSize = (e.fontSize || 16) + 'px';
+        textDiv.style.fontWeight = e.fontWeight || '600';
+        textDiv.style.textAlign = 'center';
+        textDiv.style.padding = '8px 12px';
+        textDiv.style.borderRadius = '6px';
+        textDiv.style.whiteSpace = 'nowrap';
+
+        let activeCondition = e.conditions && e.conditions[0];
+        if (e.conditions) {
+            for (let cond of e.conditions) {
+                if (eval(`${e.value} ${cond.operator} ${cond.threshold}`)) {
+                    activeCondition = cond;
+                    break;
+                }
+            }
+        }
+
+        textDiv.textContent = activeCondition ? activeCondition.text : e.label || '';
+        textDiv.style.color = activeCondition ? (activeCondition.color || 'white') : 'var(--text-light)';
+        textDiv.style.background = activeCondition ? (activeCondition.background || 'rgba(255,0,0,0.3)') : 'rgba(0,0,0,0.2)';
+
+        wrapper.appendChild(textDiv);
+        wrapper._textEl = textDiv;
+        wrapper._type = 'conditional-text';
+        return wrapper;
+    }
+
     function createElement(e) {
         if (e.type === 'bar') return createBarElement(e);
         if (e.type === 'led') return createLEDElement(e);
+        if (e.type === 'text') return createTextElement(e);
+        if (e.type === 'bar-marker') return createBarMarkerElement(e);
+        if (e.type === 'conditional-text') return createConditionalTextElement(e);
         return createGaugeElement(e);
     }
 
@@ -303,7 +479,7 @@
         e.value = newValue;
 
         if (el._type === 'gauge' && el._needle) {
-            const size = e.size || 120;
+            const size = 120;
             const radius = (size / 2) - 15;
             const center = size / 2;
             const needleRotation = ((newValue - e.min) / (e.max - e.min)) * 270 - 135;
@@ -313,10 +489,29 @@
             const pct = ((newValue - e.min) / (e.max - e.min)) * 100;
             el._fillEl.style.width = pct + '%';
             if (el._valueEl) el._valueEl.textContent = newValue.toFixed(1);
+        } else if (el._type === 'bar-marker' && el._fillEl) {
+            const pct = ((newValue - e.min) / (e.max - e.min)) * 100;
+            el._fillEl.style.width = pct + '%';
+            if (el._valueEl) el._valueEl.textContent = newValue.toFixed(1) + ' / ' + e.max.toFixed(1);
         } else if (el._type === 'led' && el._ledEl) {
             const isActive = newValue >= e.threshold;
             el._ledEl.style.background = isActive ? (e.color || '#00FF00') : (e.colorOff || '#333');
             el._ledEl.style.boxShadow = isActive ? `0 0 10px ${e.color || '#00FF00'}` : 'none';
+        } else if (el._type === 'text' && el._textEl) {
+            el._textEl.textContent = e.text || e.label || '';
+        } else if (el._type === 'conditional-text' && el._textEl) {
+            let activeCondition = e.conditions && e.conditions[0];
+            if (e.conditions) {
+                for (let cond of e.conditions) {
+                    if (eval(`${newValue} ${cond.operator} ${cond.threshold}`)) {
+                        activeCondition = cond;
+                        break;
+                    }
+                }
+            }
+            el._textEl.textContent = activeCondition ? activeCondition.text : e.label || '';
+            el._textEl.style.color = activeCondition ? (activeCondition.color || 'white') : 'var(--text-light)';
+            el._textEl.style.background = activeCondition ? (activeCondition.background || 'rgba(255,0,0,0.3)') : 'rgba(0,0,0,0.2)';
         }
     }
 
@@ -372,11 +567,21 @@
         // Left panel: Configurações
         const leftPanel = document.createElement('div');
         leftPanel.style.width = '30%';
-        leftPanel.style.overflowY = 'auto';
-        leftPanel.style.padding = '20px';
-        leftPanel.style.paddingBottom = '80px';
         leftPanel.style.background = 'rgba(255,255,255,0.02)';
         leftPanel.style.borderRight = '1px solid var(--border-color)';
+        leftPanel.style.display = 'flex';
+        leftPanel.style.flexDirection = 'column';
+        leftPanel.style.height = '100%';
+
+        const leftContent = document.createElement('div');
+        leftContent.style.flex = '1';
+        leftContent.style.overflowY = 'auto';
+        leftContent.style.padding = '20px';
+
+        const leftFooter = document.createElement('div');
+        leftFooter.style.padding = '15px 20px';
+        leftFooter.style.borderTop = '1px solid var(--border-color)';
+        leftFooter.style.background = 'rgba(0,0,0,0.2)';
 
         // Right panel: Canvas para arrastar
         const rightPanel = document.createElement('div');
@@ -406,36 +611,73 @@
             preview.style.userSelect = 'none';
             preview.style.zIndex = '10';
 
-            // Mini preview
+            // Mini preview com tamanho proporcional
             if (e.type === 'gauge') {
-                preview.style.width = '60px';
-                preview.style.height = '60px';
+                const scale = (e.sizeScale || 100) / 100;
+                const sizePx = 120 * scale;
+                preview.style.width = sizePx + 'px';
+                preview.style.height = sizePx + 'px';
                 preview.style.background = e.color || 'var(--primary-red)';
                 preview.style.borderRadius = '50%';
                 preview.style.border = '2px solid white';
             } else if (e.type === 'bar') {
-                preview.style.width = '80px';
-                preview.style.height = '25px';
+                const scale = (e.sizeScale || 100) / 100;
+                const widthPx = 120 * scale;
+                const heightPx = 30 * scale;
+                preview.style.width = widthPx + 'px';
+                preview.style.height = heightPx + 'px';
                 preview.style.background = e.color || 'var(--primary-red)';
                 preview.style.borderRadius = '12px';
                 preview.style.border = '2px solid white';
+            } else if (e.type === 'bar-marker') {
+                const scale = (e.sizeScale || 100) / 100;
+                const widthPx = 150 * scale;
+                const heightPx = 35 * scale;
+                preview.style.width = widthPx + 'px';
+                preview.style.height = heightPx + 'px';
+                preview.style.background = e.color || 'var(--primary-red)';
+                preview.style.borderRadius = '8px';
+                preview.style.border = '2px solid white';
             } else if (e.type === 'led') {
-                preview.style.width = (e.size || 50) + 'px';
-                preview.style.height = (e.size || 50) + 'px';
+                const scale = (e.sizeScale || 100) / 100;
+                const sizePx = 50 * scale;
+                preview.style.width = sizePx + 'px';
+                preview.style.height = sizePx + 'px';
                 preview.style.background = e.color || '#00FF00';
                 preview.style.borderRadius = '50%';
                 preview.style.border = '2px solid white';
                 preview.style.boxShadow = `0 0 15px ${e.color || '#00FF00'}`;
+            } else if (e.type === 'text') {
+                preview.style.width = 'auto';
+                preview.style.height = 'auto';
+                preview.style.padding = '6px 12px';
+                preview.style.background = 'rgba(255,255,255,0.1)';
+                preview.style.borderRadius = '4px';
+                preview.style.border = '1px solid white';
+                preview.style.color = e.color || 'var(--text-light)';
+                preview.style.fontSize = ((e.fontSize || 14) * 0.8) + 'px';
+                preview.textContent = (e.text || 'Texto').substring(0, 15);
+            } else if (e.type === 'conditional-text') {
+                preview.style.width = 'auto';
+                preview.style.height = 'auto';
+                preview.style.padding = '8px 12px';
+                preview.style.background = 'rgba(0,200,0,0.2)';
+                preview.style.borderRadius = '4px';
+                preview.style.border = '2px solid #00FF00';
+                preview.style.color = '#00FF00';
+                preview.style.fontSize = ((e.fontSize || 16) * 0.8) + 'px';
+                preview.style.fontWeight = '600';
+                preview.textContent = 'Condicional';
             }
 
             // Label
             const label = document.createElement('div');
             label.style.position = 'absolute';
-            label.style.bottom = '-20px';
+            label.style.bottom = '-22px';
             label.style.left = '50%';
             label.style.transform = 'translateX(-50%)';
             label.style.color = 'var(--text-light)';
-            label.style.fontSize = '12px';
+            label.style.fontSize = '11px';
             label.style.fontWeight = '600';
             label.style.whiteSpace = 'nowrap';
             label.textContent = e.label || e.id;
@@ -445,6 +687,7 @@
             let dragging = false;
             let start = { x: 0, y: 0 };
             let bounds = null;
+            let previewClone = null;
 
             function onPointerDown(ev) {
                 ev.preventDefault();
@@ -455,10 +698,20 @@
                 bounds = canvas.getBoundingClientRect();
                 preview.style.cursor = 'grabbing';
                 preview.style.zIndex = '1000';
+
+                // Criar simulação do elemento
+                previewClone = createElement(e);
+                previewClone.style.position = 'absolute';
+                previewClone.style.left = '50%';
+                previewClone.style.top = '50%';
+                previewClone.style.transform = 'translate(-50%, -50%)';
+                previewClone.style.pointerEvents = 'none';
+                previewClone.style.opacity = '0.7';
+                canvas.appendChild(previewClone);
             }
 
             function onPointerMove(ev) {
-                if (!dragging) return;
+                if (!dragging || !previewClone) return;
                 const dx = ev.clientX - start.x;
                 const dy = ev.clientY - start.y;
                 const currentRect = preview.getBoundingClientRect();
@@ -473,6 +726,8 @@
 
                 preview.style.left = px + '%';
                 preview.style.top = py + '%';
+                previewClone.style.left = px + '%';
+                previewClone.style.top = py + '%';
 
                 elements[idx].pos = { x: Math.round(px * 100) / 100, y: Math.round(py * 100) / 100 };
 
@@ -486,6 +741,11 @@
                 preview.releasePointerCapture && preview.releasePointerCapture(ev.pointerId);
                 preview.style.cursor = 'grab';
                 preview.style.zIndex = '10';
+
+                if (previewClone) {
+                    previewClone.remove();
+                    previewClone = null;
+                }
             }
 
             preview.addEventListener('pointerdown', onPointerDown);
@@ -507,13 +767,24 @@
         // Edit panel function
         const showEditPanel = (idx) => {
             const e = elements[idx];
-            leftPanel.innerHTML = '';
+            leftContent.innerHTML = '';
 
             const title = document.createElement('h3');
             title.style.color = 'var(--light-red)';
             title.style.marginBottom = '15px';
             title.textContent = e.label || e.id;
-            leftPanel.appendChild(title);
+            leftContent.appendChild(title);
+
+            const infoBox = document.createElement('div');
+            infoBox.style.padding = '10px';
+            infoBox.style.background = 'rgba(0,200,0,0.1)';
+            infoBox.style.borderRadius = '4px';
+            infoBox.style.marginBottom = '15px';
+            infoBox.style.fontSize = '12px';
+            infoBox.style.color = 'var(--text-light)';
+            infoBox.style.border = '1px solid rgba(0,200,0,0.3)';
+            infoBox.textContent = `Tipo: ${e.type} | Posição: (${Math.round(e.pos.x)}%, ${Math.round(e.pos.y)}%)`;
+            leftContent.appendChild(infoBox);
 
             const removeBtn = document.createElement('button');
             removeBtn.textContent = '✕ Remover';
@@ -529,30 +800,73 @@
                 elements.splice(idx, 1);
                 renderEditMode();
             });
-            leftPanel.appendChild(removeBtn);
+            leftContent.appendChild(removeBtn);
 
             const commonFields = [
                 { label: 'Label', key: 'label', type: 'text' },
-                { label: 'Tipo', key: 'type', type: 'select', options: ['gauge', 'bar', 'led'] },
+                { label: 'Tipo', key: 'type', type: 'select', options: ['gauge', 'bar', 'bar-marker', 'led', 'text', 'conditional-text', 'button'] },
+                { label: 'Cor', key: 'color', type: 'color' },
+                { label: 'Tamanho (%)', key: 'sizeScale', type: 'range', min: '25', max: '444', step: '5' },
+                { label: 'Ícone (Bootstrap)', key: 'icon', type: 'text', placeholder: 'Ex: speedometer, power, fuel-pump' }
+            ];
+
+            const gaugeBarFields = [
+                { label: 'Mín', key: 'min', type: 'number' },
+                { label: 'Máx', key: 'max', type: 'number' },
+                { label: 'Valor', key: 'value', type: 'number' }
+            ];
+
+            const barMarkerFields = [
                 { label: 'Mín', key: 'min', type: 'number' },
                 { label: 'Máx', key: 'max', type: 'number' },
                 { label: 'Valor', key: 'value', type: 'number' },
-                { label: 'Cor', key: 'color', type: 'color' },
-                { label: 'Tamanho (px)', key: 'size', type: 'number' }
+                { label: 'Valor Marcador', key: 'markerValue', type: 'number' },
+                { label: 'Cor Marcador', key: 'markerColor', type: 'color' }
             ];
 
             const ledFields = [
+                { label: 'Valor', key: 'value', type: 'number' },
                 { label: 'Limiar', key: 'threshold', type: 'number' },
                 { label: 'Cor Off', key: 'colorOff', type: 'color' },
                 { label: 'Piscar', key: 'blink', type: 'checkbox' },
                 { label: 'Taxa Pisca (ms)', key: 'blinkRate', type: 'number' }
             ];
 
-            const fieldsToShow = e.type === 'led' ? [...commonFields, ...ledFields] : commonFields;
+            const textFields = [
+                { label: 'Texto', key: 'text', type: 'text' },
+                { label: 'Tamanho Fonte (px)', key: 'fontSize', type: 'number' },
+                { label: 'Peso (400, 600, 700)', key: 'fontWeight', type: 'number' }
+            ];
+
+            const conditionalTextFields = [
+                { label: 'Valor', key: 'value', type: 'number' },
+                { label: 'Tamanho Fonte (px)', key: 'fontSize', type: 'number' },
+                { label: 'Peso (400, 600, 700)', key: 'fontWeight', type: 'number' }
+            ];
+
+            const buttonFields = [
+                { label: 'Modo', key: 'mode', type: 'select', options: ['press_release', 'toggle', 'value'] },
+                { label: 'Comando ao Apertar', key: 'commandPress', type: 'text', placeholder: 'Ex: test_press' },
+                { label: 'Comando ao Soltar', key: 'commandRelease', type: 'text', placeholder: 'Ex: test_release' },
+                { label: 'Valor ao Apertar', key: 'valuePressCommand', type: 'text', placeholder: 'Comando+valor, ex: motor_cmd/1000' },
+                { label: 'Valor ao Soltar', key: 'valueReleaseCommand', type: 'text', placeholder: 'Comando+valor, ex: motor_cmd/0' }
+            ];
+
+            let fieldsToShow = commonFields;
+            
+            if (e.type === 'gauge' || e.type === 'bar') {
+                fieldsToShow = [...fieldsToShow, ...gaugeBarFields];
+            } else if (e.type === 'bar-marker') {
+                fieldsToShow = [...fieldsToShow, ...barMarkerFields];
+            } else if (e.type === 'led') {
+                fieldsToShow = [...fieldsToShow, ...ledFields];
+            } else if (e.type === 'text') {
+                fieldsToShow = [...fieldsToShow, ...textFields];
+            } else if (e.type === 'conditional-text') {
+                fieldsToShow = [...fieldsToShow, ...conditionalTextFields];
+            }
 
             fieldsToShow.forEach(f => {
-                if (e.type !== 'led' && (f.key === 'threshold' || f.key === 'colorOff' || f.key === 'blink' || f.key === 'blinkRate')) return;
-
                 const row = document.createElement('div');
                 row.style.display = 'flex';
                 row.style.flexDirection = 'column';
@@ -587,6 +901,36 @@
                     inp.style.cursor = 'pointer';
                     inp.style.width = '18px';
                     inp.style.height = '18px';
+                } else if (f.type === 'range') {
+                    inp = document.createElement('input');
+                    inp.type = 'range';
+                    inp.min = f.min || '0';
+                    inp.max = f.max || '100';
+                    inp.step = f.step || '1';
+                    inp.value = e[f.key] || '100';
+                    inp.style.width = '100%';
+                    inp.style.cursor = 'pointer';
+
+                    const valueDisplay = document.createElement('div');
+                    valueDisplay.style.fontSize = '12px';
+                    valueDisplay.style.color = 'var(--light-red)';
+                    valueDisplay.style.marginTop = '4px';
+                    valueDisplay.style.fontWeight = '600';
+                    valueDisplay.textContent = inp.value + '%';
+
+                    inp.addEventListener('input', () => {
+                        valueDisplay.textContent = inp.value + '%';
+                    });
+
+                    row.appendChild(lbl);
+                    row.appendChild(inp);
+                    row.appendChild(valueDisplay);
+                    leftContent.appendChild(row);
+
+                    inp.addEventListener('change', () => {
+                        elements[idx][f.key] = parseFloat(inp.value);
+                    });
+                    return;
                 } else {
                     inp = document.createElement('input');
                     inp.type = f.type;
@@ -596,7 +940,9 @@
                     inp.style.color = 'var(--text-light)';
                     inp.style.borderRadius = '4px';
                     inp.style.fontSize = '13px';
-                    inp.value = f.type === 'color' ? (e[f.key] || '#8B0000') : e[f.key];
+                    if (f.placeholder) inp.placeholder = f.placeholder;
+                    if (f.step) inp.step = f.step;
+                    inp.value = f.type === 'color' ? (e[f.key] || '#8B0000') : (e[f.key] || '');
                 }
 
                 inp.addEventListener('change', () => {
@@ -609,12 +955,77 @@
                         v = inp.value;
                     }
                     elements[idx][f.key] = v;
-                    renderEditMode();
                 });
 
                 row.appendChild(lbl);
                 row.appendChild(inp);
-                leftPanel.appendChild(row);
+                leftContent.appendChild(row);
+
+                // Se for campo de ícone, adicionar seletor visual
+                if (f.key === 'icon') {
+                    const iconPickerContainer = document.createElement('div');
+                    iconPickerContainer.style.marginBottom = '12px';
+                    iconPickerContainer.style.paddingTop = '10px';
+                    iconPickerContainer.style.borderTop = '1px solid var(--border-color)';
+
+                    const pickerLabel = document.createElement('label');
+                    pickerLabel.style.color = 'var(--text-light)';
+                    pickerLabel.style.fontSize = '12px';
+                    pickerLabel.style.fontWeight = '600';
+                    pickerLabel.textContent = 'Ícones populares:';
+                    iconPickerContainer.appendChild(pickerLabel);
+
+                    const commonIcons = [
+                        'speedometer', 'speedometer2', 'fuel-pump', 'power', 'thermometer', 
+                        'droplet', 'wind', 'lightning', 'gear', 'wrench', 'tool', 'clock',
+                        'battery-full', 'exclamation-triangle', 'check-circle', 'x-circle',
+                        'arrow-up', 'arrow-down', 'circle-fill', 'square-fill', 'lambda',
+                        'gauge', 'activity', 'play-fill', 'stop-fill', 'pause-fill',
+                        'filter', 'sliders', 'crosshair', 'pin', 'target'
+                    ];
+
+                    const iconGrid = document.createElement('div');
+                    iconGrid.style.display = 'grid';
+                    iconGrid.style.gridTemplateColumns = 'repeat(5, 1fr)';
+                    iconGrid.style.gap = '6px';
+                    iconGrid.style.marginTop = '8px';
+
+                    commonIcons.forEach(iconName => {
+                        const iconBtn = document.createElement('button');
+                        iconBtn.style.padding = '8px';
+                        iconBtn.style.background = e.icon === iconName ? 'var(--primary-red)' : 'rgba(255,255,255,0.05)';
+                        iconBtn.style.border = '1px solid var(--border-color)';
+                        iconBtn.style.borderRadius = '4px';
+                        iconBtn.style.cursor = 'pointer';
+                        iconBtn.style.fontSize = '16px';
+                        iconBtn.style.color = 'var(--text-light)';
+                        iconBtn.style.transition = 'all 0.2s ease';
+                        iconBtn.title = iconName;
+
+                        const icon = document.createElement('i');
+                        icon.className = `bi bi-${iconName}`;
+                        iconBtn.appendChild(icon);
+
+                        iconBtn.addEventListener('mouseover', () => {
+                            iconBtn.style.background = 'rgba(200,50,50,0.3)';
+                        });
+
+                        iconBtn.addEventListener('mouseout', () => {
+                            iconBtn.style.background = e.icon === iconName ? 'var(--primary-red)' : 'rgba(255,255,255,0.05)';
+                        });
+
+                        iconBtn.addEventListener('click', () => {
+                            elements[idx].icon = iconName;
+                            inp.value = iconName;
+                            showEditPanel(idx);
+                        });
+
+                        iconGrid.appendChild(iconBtn);
+                    });
+
+                    iconPickerContainer.appendChild(iconGrid);
+                    leftContent.appendChild(iconPickerContainer);
+                }
             });
         };
 
@@ -630,23 +1041,98 @@
         addBtn.style.cursor = 'pointer';
         addBtn.style.fontSize = '14px';
         addBtn.style.fontWeight = '600';
-        addBtn.style.marginTop = '15px';
+
         addBtn.addEventListener('click', () => {
-            const newId = 'elem_' + Date.now();
-            elements.push({
-                id: newId,
-                type: 'gauge',
-                label: 'Novo',
-                value: 0,
-                min: 0,
-                max: 100,
-                size: 120,
-                color: '#8B0000',
-                pos: { x: 50, y: 50 }
+            const typeSelect = document.createElement('select');
+            typeSelect.style.padding = '8px';
+            typeSelect.style.marginBottom = '10px';
+            typeSelect.style.width = '100%';
+            typeSelect.style.borderRadius = '4px';
+            typeSelect.style.border = '1px solid var(--border-color)';
+            typeSelect.style.background = 'var(--bg-dark)';
+            typeSelect.style.color = 'var(--text-light)';
+            
+            ['gauge', 'bar', 'bar-marker', 'led', 'text', 'conditional-text'].forEach(t => {
+                const opt = document.createElement('option');
+                opt.value = t;
+                opt.textContent = t;
+                typeSelect.appendChild(opt);
             });
-            renderEditMode();
+
+            const confirmBtn = document.createElement('button');
+            confirmBtn.textContent = 'Criar';
+            confirmBtn.style.width = '48%';
+            confirmBtn.style.padding = '8px';
+            confirmBtn.style.background = 'var(--primary-red)';
+            confirmBtn.style.border = 'none';
+            confirmBtn.style.color = 'white';
+            confirmBtn.style.borderRadius = '4px';
+            confirmBtn.style.cursor = 'pointer';
+
+            const cancelBtn = document.createElement('button');
+            cancelBtn.textContent = 'Cancelar';
+            cancelBtn.style.width = '48%';
+            cancelBtn.style.padding = '8px';
+            cancelBtn.style.background = 'var(--border-color)';
+            cancelBtn.style.border = 'none';
+            cancelBtn.style.color = 'var(--text-light)';
+            cancelBtn.style.borderRadius = '4px';
+            cancelBtn.style.cursor = 'pointer';
+            cancelBtn.style.marginLeft = '4%';
+
+            confirmBtn.addEventListener('click', () => {
+                const type = typeSelect.value;
+                const baseConfig = {
+                    id: 'elem_' + Date.now(),
+                    type: type,
+                    label: 'Novo',
+                    pos: { x: 50, y: 50 }
+                };
+
+                let newElem = baseConfig;
+                if (type === 'gauge' || type === 'bar') {
+                    newElem = { ...baseConfig, value: 0, min: 0, max: 100, sizeScale: 100, color: '#8B0000' };
+                } else if (type === 'bar-marker') {
+                    newElem = { ...baseConfig, value: 50, min: 0, max: 100, sizeScale: 100, color: '#8B0000', markerValue: 75, markerColor: '#FFD700' };
+                } else if (type === 'led') {
+                    newElem = { ...baseConfig, value: 0, threshold: 500, color: '#00FF00', colorOff: '#333333', blink: false, blinkRate: 500, sizeScale: 100 };
+                } else if (type === 'text') {
+                    newElem = { ...baseConfig, text: 'Novo Texto', fontSize: 14, fontWeight: '400', color: 'var(--text-light)' };
+                } else if (type === 'conditional-text') {
+                    newElem = { ...baseConfig, value: 0, fontSize: 16, fontWeight: '600', conditions: [] };
+                }
+
+                elements.push(newElem);
+                renderEditMode();
+            });
+
+            cancelBtn.addEventListener('click', () => {
+                renderEditMode();
+            });
+
+            const tmpPanel = document.createElement('div');
+            tmpPanel.style.padding = '15px';
+            tmpPanel.style.background = 'rgba(255,0,0,0.1)';
+            tmpPanel.style.borderRadius = '6px';
+            tmpPanel.style.marginBottom = '15px';
+
+            const title = document.createElement('div');
+            title.textContent = 'Selecione o tipo de elemento:';
+            title.style.marginBottom = '10px';
+            title.style.color = 'var(--light-red)';
+
+            tmpPanel.appendChild(title);
+            tmpPanel.appendChild(typeSelect);
+            tmpPanel.appendChild(confirmBtn);
+            tmpPanel.appendChild(cancelBtn);
+
+            leftContent.innerHTML = '';
+            leftContent.appendChild(tmpPanel);
         });
-        leftPanel.appendChild(addBtn);
+
+        leftPanel.appendChild(leftContent);
+        leftFooter.appendChild(addBtn);
+        leftPanel.appendChild(leftFooter);
 
         mainArea.appendChild(leftPanel);
         mainArea.appendChild(rightPanel);
