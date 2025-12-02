@@ -25,7 +25,9 @@ class Table3DController {
         this.max = widget.max !== undefined ? widget.max : 100;
         this.step = widget.step || 1;
         this.unit = widget.unit || '';
-        this.colorMode = widget.colorMode || 'gradient'; // gradient, heat, cool
+        this.colorMode = widget.colorMode || 'gradient'; // gradient, heat, cool, viridis, plasma, inferno
+        this.valueType = widget.valueType || 'float'; // float ou integer
+        this.autoFill = widget.autoFill !== undefined ? widget.autoFill : true; // Auto-fill ao inicializar
         
         // Eixos editáveis (opcional)
         this.xAxis = widget.xAxis || null; // {min, max, command, enabled}
@@ -35,6 +37,11 @@ class Table3DController {
         
         // Agora sim, fazer parseData com this.min já definido
         this.data = this.parseData(currentValue, widget);
+        
+        // Se autoFill está ativo e a tabela está vazia, preenche automaticamente
+        if (this.autoFill) {
+            this.autoFillTable();
+        }
         
         // Inicializa os eixos com valores padrão OU pulled da ECU
         this.initializeAxes(currentValue);
@@ -47,6 +54,8 @@ class Table3DController {
         console.log(`[Table3D] rowCommands:`, this.rowCommands);
         console.log(`[Table3D] Dados recebidos:`, currentValue);
         console.log(`[Table3D] Dados parseados:`, this.data);
+        console.log(`[Table3D] Tipo de valor:`, this.valueType);
+        console.log(`[Table3D] Modo de cores:`, this.colorMode);
     }
 
     /**
@@ -67,6 +76,46 @@ class Table3DController {
             console.log(`[Table3D] Enviando Eixo Y inicial: ${this.yAxis.command} = ${yValues.substring(0, 50)}...`);
             this.onValueChange(this.yAxis.command, yValues);
         }
+    }
+
+    /**
+     * Preenche automaticamente a tabela interpolando diagonal entre primeira e última célula
+     * Se a tabela estiver completamente vazia, cria um gradiente do min ao max
+     */
+    autoFillTable() {
+        let hasData = false;
+        
+        // Verifica se há dados não-padrão
+        for (let r = 0; r < this.data.length; r++) {
+            for (let c = 0; c < this.data[r].length; c++) {
+                if (this.data[r][c] !== this.min) {
+                    hasData = true;
+                    break;
+                }
+            }
+            if (hasData) break;
+        }
+        
+        // Se tem dados, não faz nada
+        if (hasData) return;
+        
+        console.log('[Table3D] Tabela vazia. Fazendo preenchimento automático com gradiente diagonal...');
+        
+        // Preenche com gradiente diagonal do min ao max
+        const startVal = this.min;
+        const endVal = this.max;
+        
+        for (let r = 0; r < this.data.length; r++) {
+            for (let c = 0; c < this.data[r].length; c++) {
+                // Interpolação diagonal: média da posição normalizada
+                const tRow = this.data.length > 1 ? r / (this.data.length - 1) : 0;
+                const tCol = this.data[r].length > 1 ? c / (this.data[r].length - 1) : 0;
+                const t = (tRow + tCol) / 2; // Média das duas dimensões
+                this.data[r][c] = startVal + (endVal - startVal) * t;
+            }
+        }
+        
+        console.log('[Table3D] Preenchimento diagonal concluído');
     }
 
     /**
@@ -125,6 +174,7 @@ class Table3DController {
 
     /**
      * Gera cor baseada no valor (interpolação entre cores)
+     * Suporta: gradient, heat, cool, viridis, plasma, inferno
      */
     getColorForValue(value) {
         // Validação: garantir que value é um número
@@ -135,41 +185,133 @@ class Table3DController {
         const normalized = range > 0 ? (numValue - this.min) / range : 0;
         const clamped = Math.max(0, Math.min(1, normalized));
 
-        if (this.colorMode === 'heat') {
-            // Heat map: azul -> verde -> amarelo -> vermelho
-            if (clamped < 0.25) {
-                // Azul para verde
-                const t = clamped / 0.25;
-                return this.interpolateColor({ r: 0, g: 0, b: 255 }, { r: 0, g: 255, b: 0 }, t);
-            } else if (clamped < 0.5) {
-                // Verde para amarelo
-                const t = (clamped - 0.25) / 0.25;
-                return this.interpolateColor({ r: 0, g: 255, b: 0 }, { r: 255, g: 255, b: 0 }, t);
-            } else if (clamped < 0.75) {
-                // Amarelo para laranja
-                const t = (clamped - 0.5) / 0.25;
-                return this.interpolateColor({ r: 255, g: 255, b: 0 }, { r: 255, g: 165, b: 0 }, t);
-            } else {
-                // Laranja para vermelho
-                const t = (clamped - 0.75) / 0.25;
-                return this.interpolateColor({ r: 255, g: 165, b: 0 }, { r: 255, g: 0, b: 0 }, t);
-            }
-        } else if (this.colorMode === 'cool') {
-            // Cool map: branco -> azul -> preto
-            if (clamped < 0.5) {
-                const t = clamped / 0.5;
-                return this.interpolateColor({ r: 255, g: 255, b: 255 }, { r: 0, g: 100, b: 255 }, t);
-            } else {
-                const t = (clamped - 0.5) / 0.5;
-                return this.interpolateColor({ r: 0, g: 100, b: 255 }, { r: 0, g: 0, b: 0 }, t);
-            }
-        } else {
-            // Gradient padrão: vermelho claro -> vermelho escuro
-            const r = Math.round(180 + clamped * 75);
-            const g = Math.round(20 + clamped * 30);
-            const b = Math.round(20 + clamped * 30);
-            return `rgb(${r}, ${g}, ${b})`;
+        switch(this.colorMode) {
+            case 'heat': return this.getHeatColor(clamped);
+            case 'cool': return this.getCoolColor(clamped);
+            case 'viridis': return this.getViridisColor(clamped);
+            case 'plasma': return this.getPlasmaColor(clamped);
+            case 'inferno': return this.getInfernoColor(clamped);
+            default: return this.getGradientColor(clamped);
         }
+    }
+
+    /**
+     * Mapa de cores Gradient (vermelho)
+     */
+    getGradientColor(t) {
+        const r = Math.round(180 + t * 75);
+        const g = Math.round(20 + t * 30);
+        const b = Math.round(20 + t * 30);
+        return `rgb(${r}, ${g}, ${b})`;
+    }
+
+    /**
+     * Mapa de cores Heat: azul -> verde -> amarelo -> laranja -> vermelho
+     */
+    getHeatColor(t) {
+        if (t < 0.25) {
+            const nt = t / 0.25;
+            return this.interpolateColor({ r: 0, g: 0, b: 255 }, { r: 0, g: 255, b: 0 }, nt);
+        } else if (t < 0.5) {
+            const nt = (t - 0.25) / 0.25;
+            return this.interpolateColor({ r: 0, g: 255, b: 0 }, { r: 255, g: 255, b: 0 }, nt);
+        } else if (t < 0.75) {
+            const nt = (t - 0.5) / 0.25;
+            return this.interpolateColor({ r: 255, g: 255, b: 0 }, { r: 255, g: 165, b: 0 }, nt);
+        } else {
+            const nt = (t - 0.75) / 0.25;
+            return this.interpolateColor({ r: 255, g: 165, b: 0 }, { r: 255, g: 0, b: 0 }, nt);
+        }
+    }
+
+    /**
+     * Mapa de cores Cool: branco -> azul ciano -> azul -> preto
+     */
+    getCoolColor(t) {
+        if (t < 0.5) {
+            const nt = t / 0.5;
+            return this.interpolateColor({ r: 255, g: 255, b: 255 }, { r: 0, g: 100, b: 255 }, nt);
+        } else {
+            const nt = (t - 0.5) / 0.5;
+            return this.interpolateColor({ r: 0, g: 100, b: 255 }, { r: 0, g: 0, b: 0 }, nt);
+        }
+    }
+
+    /**
+     * Mapa de cores Viridis: roxo -> azul -> verde -> amarelo
+     */
+    getViridisColor(t) {
+        // Pontos de controle do Viridis
+        const stops = [
+            { pos: 0.0, r: 68, g: 1, b: 84 },      // roxo escuro
+            { pos: 0.25, r: 59, g: 82, b: 139 },    // roxo-azul
+            { pos: 0.5, r: 33, g: 145, b: 140 },    // azul-verde
+            { pos: 0.75, r: 253, g: 231, b: 37 },   // amarelo-verde
+            { pos: 1.0, r: 253, g: 231, b: 37 }     // amarelo
+        ];
+        
+        // Encontra os dois stops mais próximos
+        let stop1 = stops[0], stop2 = stops[1];
+        for (let i = 0; i < stops.length - 1; i++) {
+            if (t >= stops[i].pos && t <= stops[i + 1].pos) {
+                stop1 = stops[i];
+                stop2 = stops[i + 1];
+                break;
+            }
+        }
+        
+        const nt = (t - stop1.pos) / (stop2.pos - stop1.pos);
+        return this.interpolateColor(stop1, stop2, nt);
+    }
+
+    /**
+     * Mapa de cores Plasma: roxo -> rosa -> amarelo -> branco
+     */
+    getPlasmaColor(t) {
+        const stops = [
+            { pos: 0.0, r: 13, g: 8, b: 135 },      // roxo escuro
+            { pos: 0.25, r: 204, g: 9, b: 142 },    // magenta-roxo
+            { pos: 0.5, r: 246, g: 50, b: 67 },     // rosa-vermelho
+            { pos: 0.75, r: 248, g: 130, b: 14 },   // laranja
+            { pos: 1.0, r: 240, g: 240, b: 0 }      // amarelo
+        ];
+        
+        let stop1 = stops[0], stop2 = stops[1];
+        for (let i = 0; i < stops.length - 1; i++) {
+            if (t >= stops[i].pos && t <= stops[i + 1].pos) {
+                stop1 = stops[i];
+                stop2 = stops[i + 1];
+                break;
+            }
+        }
+        
+        const nt = (t - stop1.pos) / (stop2.pos - stop1.pos);
+        return this.interpolateColor(stop1, stop2, nt);
+    }
+
+    /**
+     * Mapa de cores Inferno: preto -> marrom -> amarelo -> branco
+     */
+    getInfernoColor(t) {
+        const stops = [
+            { pos: 0.0, r: 0, g: 0, b: 3 },         // preto
+            { pos: 0.25, r: 87, g: 15, b: 109 },    // marrom-roxo
+            { pos: 0.5, r: 188, g: 55, b: 30 },     // vermelho-marrom
+            { pos: 0.75, r: 249, g: 142, b: 23 },   // laranja-ouro
+            { pos: 1.0, r: 252, g: 255, b: 164 }    // amarelo-branco
+        ];
+        
+        let stop1 = stops[0], stop2 = stops[1];
+        for (let i = 0; i < stops.length - 1; i++) {
+            if (t >= stops[i].pos && t <= stops[i + 1].pos) {
+                stop1 = stops[i];
+                stop2 = stops[i + 1];
+                break;
+            }
+        }
+        
+        const nt = (t - stop1.pos) / (stop2.pos - stop1.pos);
+        return this.interpolateColor(stop1, stop2, nt);
     }
 
     /**
@@ -431,11 +573,24 @@ class Table3DController {
         mainWrapper.appendChild(tableWrapper);
         this.container.appendChild(mainWrapper);
 
-        // Events globais para drag
+        // Events globais para drag do mouse
         document.addEventListener('mouseup', () => {
             this.isDragging = false;
             this.dragStart = null;
         });
+
+        // Support para toque (touch events)
+        table.addEventListener('touchstart', (e) => {
+            this.handleTouchStart(e, table);
+        }, { passive: false });
+        
+        table.addEventListener('touchmove', (e) => {
+            this.handleTouchMove(e, table);
+        }, { passive: false });
+        
+        table.addEventListener('touchend', (e) => {
+            this.handleTouchEnd(e);
+        }, { passive: false });
 
         // Painel de controle / edição
         const controlPanel = document.createElement('div');
@@ -696,9 +851,58 @@ class Table3DController {
     }
 
     /**
-     * Modo de edição inline
+     * Manipula início do toque na tabela
      */
+    handleTouchStart(e, tableElement) {
+        if (e.touches.length > 0) {
+            const touch = e.touches[0];
+            const element = document.elementFromPoint(touch.clientX, touch.clientY);
+            
+            if (element && element.classList.contains('table3d-cell')) {
+                const row = parseInt(element.dataset.row);
+                const col = parseInt(element.dataset.col);
+                
+                this.isDragging = true;
+                this.dragStart = { row, col };
+                
+                // Simula um clique na célula
+                this.handleCellClick(row, col, element, { 
+                    ctrlKey: false, 
+                    metaKey: false, 
+                    shiftKey: false 
+                });
+            }
+        }
+    }
 
+    /**
+     * Manipula movimento do toque na tabela
+     */
+    handleTouchMove(e, tableElement) {
+        if (!this.isDragging || !this.dragStart) return;
+        
+        e.preventDefault(); // Previne scroll
+        
+        if (e.touches.length > 0) {
+            const touch = e.touches[0];
+            const element = document.elementFromPoint(touch.clientX, touch.clientY);
+            
+            if (element && element.classList.contains('table3d-cell')) {
+                const row = parseInt(element.dataset.row);
+                const col = parseInt(element.dataset.col);
+                
+                // Seleciona range entre dragStart e posição atual
+                this.selectCellRange(this.dragStart.row, this.dragStart.col, row, col);
+            }
+        }
+    }
+
+    /**
+     * Manipula fim do toque na tabela
+     */
+    handleTouchEnd(e) {
+        this.isDragging = false;
+    }
 
     /**
      * Atualiza valor de uma célula
@@ -709,24 +913,29 @@ class Table3DController {
         const validValue = !isNaN(numValue) ? numValue : this.min;
         const clamped = Math.max(this.min, Math.min(this.max, validValue));
         
+        // Converte para o tipo correto (float ou integer)
+        const finalValue = this.valueType === 'integer' ? Math.round(clamped) : clamped;
+        
         // Garantir que data[row][col] existe
         if (!this.data[row]) this.data[row] = [];
-        this.data[row][col] = clamped;
+        this.data[row][col] = finalValue;
 
         // Atualiza visual
         const cellElement = this.tableElement.querySelector(
             `.table3d-cell[data-row="${row}"][data-col="${col}"]`
         );
         if (cellElement) {
-            const bgColor = this.getColorForValue(clamped);
+            const bgColor = this.getColorForValue(finalValue);
             const textColor = this.getTextColorForBg(bgColor);
             cellElement.style.backgroundColor = bgColor;
             cellElement.style.color = textColor;
-            cellElement.textContent = clamped.toFixed(1);
+            const displayValue = this.valueType === 'integer' ? finalValue : finalValue.toFixed(1);
+            cellElement.textContent = displayValue;
         }
 
         // Atualiza campo de entrada
-        this.inputField.value = clamped;
+        this.inputField.value = finalValue;
+        this.inputField.step = this.valueType === 'integer' ? '1' : this.step;
 
         // Notifica mudança
         this.sendUpdate();

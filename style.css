@@ -6,12 +6,30 @@
     --bg-darker: #0f0f0f;
     --text-light: #e0e0e0;
     --border-color: #3a3a3a;
+    
+    /* Table 3D Cell Sizes - Desktop */
+    --table3d-cell-height: 18px;
+    --table3d-cell-width: 30px;
+    --table3d-cell-font: 10px;
+    --table3d-cell-padding: 2px;
+    --table3d-header-height: 18px;
+    --table3d-header-font: 9px;
+    --table3d-label-width: 35px;
+    --table3d-label-font: 9px;
 }
 
 * {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    user-select: none;
+}
+
+input, textarea, select {
+    -webkit-user-select: text;
+    user-select: text;
 }
 
 html, body {
@@ -1768,11 +1786,17 @@ input[type="number"]:focus {
     overflow: auto;
     max-height: 500px;
     background-color: #0f0f0f;
+    -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+    width: 100%;
+    flex: 1;
+    min-height: 300px;
 }
 
 .table3d-main {
     display: grid;
     background-color: #1a1a1a;
+    min-width: fit-content;
+    width: 100%;
 }
 
 .table3d-row {
@@ -1787,60 +1811,77 @@ input[type="number"]:focus {
     background-color: #2a2a2a;
     font-weight: 600;
     color: var(--light-red);
-    padding: 8px 4px;
+    padding: 4px 2px;
     text-align: center;
-    font-size: 11px;
+    font-size: var(--table3d-header-font);
     border-radius: 3px;
     position: sticky;
     top: 0;
     z-index: 10;
+    height: var(--table3d-header-height);
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .table3d-corner-cell {
     background-color: #1a1a1a;
     font-weight: 600;
     color: #666;
-    padding: 8px 4px;
+    padding: 4px 2px;
     text-align: center;
-    font-size: 11px;
+    font-size: var(--table3d-label-font);
     border-radius: 3px;
     position: sticky;
     top: 0;
     left: 0;
     z-index: 2;
+    height: var(--table3d-header-height);
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .table3d-row-label {
     background-color: #2a2a2a;
     font-weight: 500;
     color: var(--light-red);
-    padding: 6px 2px;
+    padding: 2px 2px;
     text-align: center;
-    font-size: 11px;
-    width: 40px;
+    font-size: var(--table3d-label-font);
+    width: var(--table3d-label-width);
     position: sticky;
     left: 0;
     z-index: 1;
     border-radius: 3px;
+    height: var(--table3d-cell-height);
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .table3d-cell {
     background-color: rgb(100, 20, 20);
     color: #fff;
-    padding: 4px 3px;
+    padding: var(--table3d-cell-padding);
     text-align: center;
-    font-size: 11px;
+    font-size: var(--table3d-cell-font);
     font-weight: 500;
     cursor: pointer;
     border-radius: 2px;
     transition: all 0.2s ease;
     user-select: none;
     border: 1px solid transparent;
-    min-height: 20px;
+    min-height: var(--table3d-cell-height);
+    min-width: var(--table3d-cell-width);
+    height: var(--table3d-cell-height);
     display: flex;
     align-items: center;
     justify-content: center;
     position: relative;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    touch-action: none;
 }
 
 .table3d-cell:hover {
@@ -2328,3 +2369,4 @@ input[type="number"]:focus {
 .show {
     animation: fadeIn 0.3s ease-in-out !important;
 }
+
