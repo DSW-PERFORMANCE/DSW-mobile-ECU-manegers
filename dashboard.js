@@ -1630,7 +1630,7 @@
             longPressIndicator = createLongPressIndicator();
             btnOpen.appendChild(longPressIndicator);
 
-            // Timer para detectar long press (4 segundos)
+            // Timer para detectar long press (1 segundos)
             pressTimer = setTimeout(() => {
                 isLongPressActive = true;
                 openModal(true);
@@ -1642,7 +1642,7 @@
                     longPressIndicator.remove();
                     longPressIndicator = null;
                 }
-            }, 2000);
+            }, 1000);
         });
 
         // Cancelar long press se soltar antes
