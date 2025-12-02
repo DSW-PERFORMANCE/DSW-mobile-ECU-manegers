@@ -1567,24 +1567,147 @@
         Object.keys(blinkIntervals).forEach(id => stopBlinking(id));
     }
 
-    // Handle single vs double click
+    // Handle single vs double click vs long press (works on both mouse and touch)
     let clickCount = 0;
     let clickTimer = null;
+    let pressTimer = null;
+    let pressStartTime = null;
+    let isLongPressActive = false;
+    let longPressIndicator = null;
 
     if (btnOpen) {
-        btnOpen.addEventListener('click', () => {
+        // Criar indicador visual de long press
+        function createLongPressIndicator() {
+            const indicator = document.createElement('div');
+            indicator.style.position = 'absolute';
+            indicator.style.top = '50%';
+            indicator.style.left = '50%';
+            indicator.style.transform = 'translate(-50%, -50%)';
+            indicator.style.width = '60px';
+            indicator.style.height = '60px';
+            indicator.style.borderRadius = '50%';
+            indicator.style.border = '3px solid rgba(165, 42, 42, 0.5)';
+            indicator.style.pointerEvents = 'none';
+            indicator.style.opacity = '0';
+            indicator.style.animation = 'longPressProgress 4s ease-out forwards';
+            
+            // Adicionar estilo de animação ao head
+            if (!document.getElementById('longPressStyle')) {
+                const style = document.createElement('style');
+                style.id = 'longPressStyle';
+                style.innerHTML = `
+                    @keyframes longPressProgress {
+                        0% {
+                            width: 60px;
+                            height: 60px;
+                            opacity: 1;
+                            border-color: rgba(165, 42, 42, 0.3);
+                            box-shadow: 0 0 0 0 rgba(165, 42, 42, 0.5);
+                        }
+                        100% {
+                            width: 100px;
+                            height: 100px;
+                            opacity: 0;
+                            border-color: rgba(165, 42, 42, 0);
+                            box-shadow: 0 0 0 15px rgba(165, 42, 42, 0);
+                        }
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+            
+            return indicator;
+        }
+
+        // Unified handler para mouse e touch - usa pointerdown/pointerup (melhor compatibilidade)
+        btnOpen.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            pressStartTime = Date.now();
+            isLongPressActive = false;
+
+            // Mostrar indicador visual
+            if (!btnOpen.style.position) btnOpen.style.position = 'relative';
+            longPressIndicator = createLongPressIndicator();
+            btnOpen.appendChild(longPressIndicator);
+
+            // Timer para detectar long press (4 segundos)
+            pressTimer = setTimeout(() => {
+                isLongPressActive = true;
+                openModal(true);
+                clickCount = 0;
+                if (clickTimer) clearTimeout(clickTimer);
+                
+                // Remover indicador
+                if (longPressIndicator && longPressIndicator.parentNode) {
+                    longPressIndicator.remove();
+                    longPressIndicator = null;
+                }
+            }, 2000);
+        });
+
+        // Cancelar long press se soltar antes
+        btnOpen.addEventListener('pointerup', (e) => {
+            e.preventDefault();
+            
+            if (pressTimer) {
+                clearTimeout(pressTimer);
+                pressTimer = null;
+            }
+
+            // Remover indicador visual
+            if (longPressIndicator && longPressIndicator.parentNode) {
+                longPressIndicator.remove();
+                longPressIndicator = null;
+            }
+
+            // Se foi long press, não processar como clique
+            if (isLongPressActive) {
+                isLongPressActive = false;
+                return;
+            }
+
+            // Processar como clique simples/duplo
             clickCount++;
 
             if (clickCount === 1) {
                 clickTimer = setTimeout(() => {
+                    // Single click - abre dashboard em view mode
                     openModal(false);
                     clickCount = 0;
                 }, 300);
             } else if (clickCount === 2) {
                 clearTimeout(clickTimer);
+                // Double click - abre dashboard em edit mode
                 openModal(true);
                 clickCount = 0;
             }
+        });
+
+        // Cancelar long press se sair do elemento
+        btnOpen.addEventListener('pointerleave', () => {
+            if (pressTimer) {
+                clearTimeout(pressTimer);
+                pressTimer = null;
+                
+                // Remover indicador visual
+                if (longPressIndicator && longPressIndicator.parentNode) {
+                    longPressIndicator.remove();
+                    longPressIndicator = null;
+                }
+            }
+        });
+
+        // Adicionar feedback visual durante long press
+        btnOpen.addEventListener('pointerdown', function() {
+            this.style.opacity = '0.8';
+        });
+
+        btnOpen.addEventListener('pointerup', function() {
+            this.style.opacity = '1';
+        });
+
+        btnOpen.addEventListener('pointerleave', function() {
+            this.style.opacity = '1';
         });
     }
 

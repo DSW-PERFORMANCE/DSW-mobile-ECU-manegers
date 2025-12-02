@@ -1163,6 +1163,7 @@ mark {
     justify-content: center;
     opacity: 0;
     transition: opacity 0.3s ease;
+    z-index: 10600;
 }
 
 .dialog-backdrop.show {
