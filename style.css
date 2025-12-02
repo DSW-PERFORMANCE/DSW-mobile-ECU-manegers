@@ -2370,3 +2370,120 @@ input[type="number"]:focus {
     animation: fadeIn 0.3s ease-in-out !important;
 }
 
+/* Dashboard modal (almost-fullscreen with 14px margin) */
+.dashboard-modal {
+    position: fixed;
+    left: 14px;
+    top: 14px;
+    width: calc(100% - 28px);
+    height: calc(100% - 28px);
+    background: rgba(0,0,0,0.55);
+    z-index: 10500;
+    display: none;
+    align-items: center;
+    justify-content: center;
+}
+
+.dashboard-modal[aria-hidden="false"] {
+    display: flex;
+}
+
+.dashboard-frame {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, #0f0f0f 0%, #111 100%);
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 20px 80px rgba(0,0,0,0.8);
+}
+
+.dashboard-close {
+    position: absolute;
+    right: 8px;
+    top: 6px;
+    z-index: 60;
+    background: transparent;
+    border: none;
+    color: var(--text-light);
+    font-size: 20px;
+    padding: 8px 12px;
+    cursor: pointer;
+}
+
+.dashboard-content {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    overflow: hidden; /* no scroll allowed */
+    -webkit-overflow-scrolling: auto;
+    display: block;
+}
+
+/* Marker visual elements inside dashboard */
+.dashboard-marker {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    touch-action: none;
+    cursor: grab;
+    user-select: none;
+}
+
+.dashboard-marker .marker-label {
+    display: block;
+    color: var(--text-light);
+    font-weight: 700;
+    text-shadow: 0 2px 6px rgba(0,0,0,0.7);
+    pointer-events: none;
+}
+
+.dashboard-marker .marker-value {
+    display: block;
+    color: var(--light-red);
+    font-weight: 900;
+    font-size: 1.05em;
+    pointer-events: none;
+}
+
+/* Ensure widgets area doesn't let children escape its bounds */
+.widgets-area {
+    position: relative;
+    overflow: hidden;
+}
+
+.widgets-area > * {
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+/* Prevent modal contents from scrolling the body when open */
+body.dashboard-open {
+    overflow: hidden !important;
+}
+
+/* Edit mode footer for Revert/Save buttons */
+#dashboard-edit-footer {
+    display: flex !important;
+}
+
+#dashboard-edit-footer button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3) !important;
+}
+
+#dashboard-edit-footer button:active {
+    transform: translateY(0);
+}
+
+/* Adjust dashboard content to leave space for footer in edit mode */
+.dashboard-content {
+    padding-bottom: 70px;
+}
+
+.dashboard-frame[data-edit-mode="true"] .dashboard-content {
+    padding-bottom: 80px;
+}
+

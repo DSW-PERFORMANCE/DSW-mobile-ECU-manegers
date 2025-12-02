@@ -47,9 +47,21 @@
                         <button id="saveBtn" class="btn btn-danger" title="Salvar valores na ECU">
                             <i class="bi bi-save"></i> Salvar
                         </button>
+                        <button id="dashboardBtn" class="btn btn-secondary" title="Abrir Dashboard">
+                            <i class="bi bi-speedometer2"></i> Dashboard
+                        </button>
                     </div>
                     <input type="file" id="importFileInput" accept=".dswcfg" style="display: none;">
                 </div>
+            </div>
+        </div>
+    </div>
+    <!-- Dashboard modal (invisible until opened) -->
+    <div id="dashboardModal" class="dashboard-modal" aria-hidden="true">
+        <div class="dashboard-frame" role="dialog" aria-modal="true">
+            <button class="dashboard-close" id="dashboardCloseBtn" aria-label="Fechar">✕</button>
+            <div class="dashboard-content" id="dashboardContent">
+                <!-- Markers and dashboard elements will be rendered here by dashboard.js -->
             </div>
         </div>
     </div>
@@ -63,6 +75,7 @@
     <script src="ecu-communication.js"></script>
     <script src="ecu-manager.js"></script>
     <script src="config-export-import.js"></script>
+    <script src="dashboard.js"></script>
     <script src="main.js"></script>
 </body>
 </html>
