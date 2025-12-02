@@ -881,13 +881,14 @@ class Table3DController {
     handleTouchMove(e, tableElement) {
         if (!this.isDragging || !this.dragStart) return;
         
-        e.preventDefault(); // Previne scroll
-        
         if (e.touches.length > 0) {
             const touch = e.touches[0];
             const element = document.elementFromPoint(touch.clientX, touch.clientY);
             
+            // Apenas previne scroll se o toque estiver DENTRO de uma célula da tabela
             if (element && element.classList.contains('table3d-cell')) {
+                e.preventDefault(); // Previne scroll apenas quando selecionando células
+                
                 const row = parseInt(element.dataset.row);
                 const col = parseInt(element.dataset.col);
                 

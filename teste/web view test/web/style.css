@@ -34,18 +34,20 @@ input, textarea, select {
 
 html, body {
     height: 100%;
-    overflow: hidden;
     background-color: var(--bg-dark);
     color: var(--text-light);
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .container-fluid {
+    height: 100vh;
+    overflow: hidden;
     padding: 0;
 }
 
 .row {
     margin: 0;
+    height: 100%;
 }
 
 .left-panel {
@@ -162,15 +164,18 @@ mark {
 .right-panel {
     display: flex;
     flex-direction: column;
-    height: 100vh;
+    height: 100%;
     padding: 0;
+    overflow: hidden;
 }
 
 .widgets-area {
     flex: 1;
     overflow-y: auto;
+    overflow-x: hidden;
     padding: 30px;
     background-color: var(--bg-dark);
+    min-height: 0;
 }
 
 .empty-state {
@@ -343,6 +348,8 @@ mark {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    flex-shrink: 0;
+    min-height: 70px;
 }
 
 .status-indicator {
