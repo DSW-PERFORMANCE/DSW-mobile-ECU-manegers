@@ -25,6 +25,8 @@
             value: 1200,
             min: 0,
             max: 8000,
+            valueDivisor: 100,
+            iconRotation: 0,
             sizeScale: 100,
             color: '#8B0000',
             icon: 'speedometer2',
@@ -40,6 +42,7 @@
             sizeScale: 100,
             color: '#8B0000',
             icon: 'speedometer',
+            iconRotation: 0,
             pos: { x: 50, y: 30 }
         },
         {
@@ -100,16 +103,22 @@
 
     function createGaugeElement(e) {
         const wrapper = document.createElement('div');
-        wrapper.className = 'dashboard-marker';
+        wrapper.className = 'dashboard-marker gauge-marker';
         wrapper.dataset.id = e.id;
         wrapper.style.left = (e.pos && e.pos.x != null ? e.pos.x : 50) + '%';
         wrapper.style.top = (e.pos && e.pos.y != null ? e.pos.y : 50) + '%';
         
         const scale = (e.sizeScale || 100) / 100;
-        const baseSizePx = 120;
-        const sizePx = baseSizePx * scale;
-        wrapper.style.width = sizePx + 'px';
-        wrapper.style.height = sizePx + 'px';
+        // Use percentage sizing so elements scale with dashboard size
+        const basePercent = 12; // base gauge size as % of dashboard width
+        const sizePercent = basePercent * scale;
+        wrapper.style.width = sizePercent + '%';
+        wrapper.style.height = sizePercent + '%';
+        
+        // Aplicar rotação ao gauge inteiro
+        if (e.gaugeRotation && e.gaugeRotation !== 0) {
+            wrapper.style.transform = `translate(-50%, -50%) rotate(${e.gaugeRotation}deg)`;
+        }
 
         const size = 120;
         const radius = (size / 2) - 15;
@@ -123,20 +132,79 @@
         svg.style.top = '0';
         svg.style.left = '0';
 
+        // Background gradient
+        const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+        const gradient = document.createElementNS('http://www.w3.org/2000/svg', 'radialGradient');
+        gradient.setAttribute('id', `gauge-grad-${e.id}`);
+        const stop1 = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
+        stop1.setAttribute('offset', '0%');
+        stop1.setAttribute('stop-color', 'rgba(40, 40, 40, 0.9)');
+        const stop2 = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
+        stop2.setAttribute('offset', '100%');
+        stop2.setAttribute('stop-color', 'rgba(15, 15, 15, 0.95)');
+        gradient.appendChild(stop1);
+        gradient.appendChild(stop2);
+        defs.appendChild(gradient);
+        svg.appendChild(defs);
+
+        // Outer circle with shadow effect
+        const outerCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        outerCircle.setAttribute('cx', center);
+        outerCircle.setAttribute('cy', center);
+        outerCircle.setAttribute('r', radius + 2);
+        outerCircle.setAttribute('fill', 'none');
+        outerCircle.setAttribute('stroke', 'rgba(139, 0, 0, 0.2)');
+        outerCircle.setAttribute('stroke-width', '1.5');
+        svg.appendChild(outerCircle);
+
+        // Main gauge circle
         const bgCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         bgCircle.setAttribute('cx', center);
         bgCircle.setAttribute('cy', center);
         bgCircle.setAttribute('r', radius);
-        bgCircle.setAttribute('fill', 'rgba(20, 20, 20, 0.8)');
-        bgCircle.setAttribute('stroke', 'var(--border-color)');
-        bgCircle.setAttribute('stroke-width', '2');
+        bgCircle.setAttribute('fill', `url(#gauge-grad-${e.id})`);
+        bgCircle.setAttribute('stroke', '#8B0000');
+        bgCircle.setAttribute('stroke-width', '1.5');
         svg.appendChild(bgCircle);
+
+        // Highlight circle for 3D effect
+        const highlight = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        highlight.setAttribute('cx', center);
+        highlight.setAttribute('cy', center - 2);
+        highlight.setAttribute('r', radius - 2);
+        highlight.setAttribute('fill', 'none');
+        highlight.setAttribute('stroke', 'rgba(255, 255, 255, 0.08)');
+        highlight.setAttribute('stroke-width', '0.5');
+        svg.appendChild(highlight);
+
+        // Zona de perigo/atenção se configurada
+        if (e.dangerZone) {
+            const dangerStart = ((e.dangerZone.start - e.min) / (e.max - e.min)) * 270 - 135;
+            const dangerEnd = ((e.dangerZone.end - e.min) / (e.max - e.min)) * 270 - 135;
+            const dangerRadius = radius - 3;
+            const dangerStartX = center + dangerRadius * Math.cos(dangerStart * Math.PI / 180);
+            const dangerStartY = center + dangerRadius * Math.sin(dangerStart * Math.PI / 180);
+            const dangerEndX = center + dangerRadius * Math.cos(dangerEnd * Math.PI / 180);
+            const dangerEndY = center + dangerRadius * Math.sin(dangerEnd * Math.PI / 180);
+            const dangerLargeArc = Math.abs(dangerEnd - dangerStart) > 180 ? 1 : 0;
+            
+            const dangerZonePath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            dangerZonePath.setAttribute('d', `M ${dangerStartX} ${dangerStartY} A ${dangerRadius} ${dangerRadius} 0 ${dangerLargeArc} 1 ${dangerEndX} ${dangerEndY}`);
+            dangerZonePath.setAttribute('stroke', e.dangerZone.color || '#FF4444');
+            dangerZonePath.setAttribute('stroke-width', '4');
+            dangerZonePath.setAttribute('fill', 'none');
+            dangerZonePath.setAttribute('opacity', '0.7');
+            dangerZonePath.style.filter = `drop-shadow(0 0 4px ${e.dangerZone.color || 'rgba(255, 68, 68, 0.8)'})`;
+            svg.appendChild(dangerZonePath);
+        }
 
         for (let i = 0; i <= 10; i++) {
             const angle = (i / 10) * 270 - 135;
             const rad = angle * (Math.PI / 180);
-            const x1 = center + (radius - 5) * Math.cos(rad);
-            const y1 = center + (radius - 5) * Math.sin(rad);
+            
+            // Main tick mark
+            const x1 = center + (radius - 8) * Math.cos(rad);
+            const y1 = center + (radius - 8) * Math.sin(rad);
             const x2 = center + radius * Math.cos(rad);
             const y2 = center + radius * Math.sin(rad);
 
@@ -145,23 +213,47 @@
             line.setAttribute('y1', y1);
             line.setAttribute('x2', x2);
             line.setAttribute('y2', y2);
-            line.setAttribute('stroke', '#555');
-            line.setAttribute('stroke-width', '1');
+            line.setAttribute('stroke', i % 2 === 0 ? '#aaa' : '#777');
+            line.setAttribute('stroke-width', i % 2 === 0 ? '1.5' : '0.8');
+            line.setAttribute('stroke-linecap', 'round');
             svg.appendChild(line);
 
-            const labelVal = e.min + (e.max - e.min) * (i / 10);
+            // Minor tick marks between main marks
+            if (i < 10) {
+                const midAngle = angle + 13.5;
+                const midRad = midAngle * (Math.PI / 180);
+                const mx1 = center + (radius - 4) * Math.cos(midRad);
+                const my1 = center + (radius - 4) * Math.sin(midRad);
+                const mx2 = center + radius * Math.cos(midRad);
+                const my2 = center + radius * Math.sin(midRad);
+
+                const miniLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                miniLine.setAttribute('x1', mx1);
+                miniLine.setAttribute('y1', my1);
+                miniLine.setAttribute('x2', mx2);
+                miniLine.setAttribute('y2', my2);
+                miniLine.setAttribute('stroke', '#555');
+                miniLine.setAttribute('stroke-width', '0.5');
+                svg.appendChild(miniLine);
+            }
+
+            // Value labels com divisor configurável
+            const divisor = e.valueDivisor || 1;
+            let labelVal = e.min + (e.max - e.min) * (i / 10);
+            labelVal = labelVal / divisor;
             const labelAngle = angle + 6;
             const labelRad = labelAngle * (Math.PI / 180);
-            const lx = center + (radius - 18) * Math.cos(labelRad);
-            const ly = center + (radius - 18) * Math.sin(labelRad);
+            const lx = center + (radius - 22) * Math.cos(labelRad);
+            const ly = center + (radius - 22) * Math.sin(labelRad);
 
             const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
             text.setAttribute('x', lx);
             text.setAttribute('y', ly);
             text.setAttribute('text-anchor', 'middle');
             text.setAttribute('dominant-baseline', 'middle');
-            text.setAttribute('fill', '#999');
+            text.setAttribute('fill', '#aaa');
             text.setAttribute('font-size', size > 120 ? '10' : '8');
+            text.setAttribute('font-weight', '500');
             text.textContent = labelVal.toFixed(0);
             svg.appendChild(text);
         }
@@ -170,46 +262,78 @@
         needle.setAttribute('id', `needle_${e.id}`);
         const needleRotation = ((e.value - e.min) / (e.max - e.min)) * 270 - 135;
         needle.setAttribute('transform', `rotate(${needleRotation} ${center} ${center})`);
+        needle.style.transition = 'transform 0.3s ease';
 
-        const needleLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        needleLine.setAttribute('x1', center);
-        needleLine.setAttribute('y1', center);
-        needleLine.setAttribute('x2', center);
-        needleLine.setAttribute('y2', center - (radius - 10));
-        needleLine.setAttribute('stroke', e.color || 'var(--primary-red)');
-        needleLine.setAttribute('stroke-width', '3');
-        needleLine.setAttribute('stroke-linecap', 'round');
-        needle.appendChild(needleLine);
+        // Needle body - polygon para ponta fina com gradiente
+        const needleGrad = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+        const grad = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
+        grad.setAttribute('id', `needle-grad-${e.id}`);
+        grad.setAttribute('x1', '0%');
+        grad.setAttribute('y1', '0%');
+        grad.setAttribute('x2', '0%');
+        grad.setAttribute('y2', '100%');
+        const gradStop1 = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
+        gradStop1.setAttribute('offset', '0%');
+        gradStop1.setAttribute('stop-color', e.color || 'var(--primary-red)');
+        gradStop1.setAttribute('stop-opacity', '1');
+        const gradStop2 = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
+        gradStop2.setAttribute('offset', '100%');
+        gradStop2.setAttribute('stop-color', 'rgba(139, 0, 0, 0.7)');
+        gradStop2.setAttribute('stop-opacity', '1');
+        grad.appendChild(gradStop1);
+        grad.appendChild(gradStop2);
+        needleGrad.appendChild(grad);
+        needle.appendChild(needleGrad);
 
+        // Needle polygon - ponta fina
+        const needlePolygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+        const needleLength = radius - 10;
+        needlePolygon.setAttribute('points', `${center},${center - needleLength} ${center - 2},${center + 8} ${center + 2},${center + 8}`);
+        needlePolygon.setAttribute('fill', `url(#needle-grad-${e.id})`);
+        needlePolygon.setAttribute('stroke', 'rgba(255, 255, 255, 0.2)');
+        needlePolygon.setAttribute('stroke-width', '0.5');
+        needlePolygon.style.filter = 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0.7))';
+        needle.appendChild(needlePolygon);
+
+        // Center dot with gradient effect
         const centerDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         centerDot.setAttribute('cx', center);
         centerDot.setAttribute('cy', center);
-        centerDot.setAttribute('r', '5');
+        centerDot.setAttribute('r', '6');
         centerDot.setAttribute('fill', e.color || 'var(--primary-red)');
+        centerDot.setAttribute('stroke', 'rgba(255, 255, 255, 0.3)');
+        centerDot.setAttribute('stroke-width', '1');
+        centerDot.style.filter = 'drop-shadow(0 0 4px ' + (e.color || 'rgba(139, 0, 0, 0.8)') + ')';
         needle.appendChild(centerDot);
         svg.appendChild(needle);
 
-        // Ícone se configurado
+        // Ícone se configurado - CENTRALIZADO NO MEIO DO GAUGE (CENTRO DO PONTEIRO)
         if (e.icon) {
             const iconDiv = document.createElement('div');
-            iconDiv.style.fontSize = '30%';
+            iconDiv.className = 'gauge-icon-center';
             iconDiv.style.position = 'absolute';
-            iconDiv.style.top = '50%';
             iconDiv.style.left = '50%';
-            iconDiv.style.transform = 'translate(-50%, -50%)';
-            iconDiv.style.color = (e.color || 'var(--primary-red)');
-            iconDiv.style.opacity = '0.3';
-            iconDiv.style.pointerEvents = 'none';
-            iconDiv.style.width = '30%';
-            iconDiv.style.height = '30%';
+            iconDiv.style.top = '50%';
+            iconDiv.style.transform = `translate(-50%, -50%)`;
+            iconDiv.style.width = '32px';
+            iconDiv.style.height = '32px';
             iconDiv.style.display = 'flex';
             iconDiv.style.alignItems = 'center';
             iconDiv.style.justifyContent = 'center';
+            iconDiv.style.color = (e.color || 'var(--primary-red)');
+            iconDiv.style.fontSize = '22px';
+            iconDiv.style.pointerEvents = 'none';
+            iconDiv.style.textShadow = '0 2px 6px rgba(0, 0, 0, 0.8)';
+            iconDiv.style.zIndex = '20';
+            
             const icon = document.createElement('i');
             icon.className = `bi bi-${e.icon}`;
             icon.style.fontSize = 'inherit';
+            icon.style.filter = `drop-shadow(0 0 3px ${e.color || 'rgba(139, 0, 0, 0.8)'})`;
             iconDiv.appendChild(icon);
-            svg.appendChild(iconDiv);
+            wrapper.appendChild(iconDiv);
+            wrapper._iconEl = iconDiv;
+            wrapper._iconInner = icon;
         }
 
         const textBox = document.createElement('div');
@@ -220,25 +344,80 @@
         textBox.style.pointerEvents = 'none';
         textBox.style.fontSize = '60%';
 
-        const label = document.createElement('div');
-        label.className = 'marker-label';
-        label.style.fontSize = 'inherit';
-        label.textContent = e.label || e.id;
+        // Título interno - BEM CENTRADO NO MEIO DO GAUGE
+        const title = document.createElement('div');
+        title.style.position = 'absolute';
+        title.style.top = '50%';
+        title.style.left = '50%';
+        title.style.transform = 'translate(-50%, -50%)';
+        title.style.width = '90%';
+        title.style.textAlign = 'center';
+        title.style.pointerEvents = 'none';
+        title.style.fontSize = '55%';
+        title.style.color = 'var(--light-red)';
+        title.style.fontWeight = '700';
+        title.style.textShadow = '0 1px 3px rgba(0, 0, 0, 0.8)';
+        title.textContent = e.label || e.id;
+        
+        // Mostrar divisor se configurado
+        if (e.valueDivisor && e.valueDivisor !== 1) {
+            const divisorText = document.createElement('div');
+            divisorText.style.fontSize = '50%';
+            divisorText.style.color = '#888';
+            divisorText.style.marginTop = '1px';
+            divisorText.textContent = `×${e.valueDivisor}`;
+            title.appendChild(divisorText);
+        }
+        svg.appendChild(title);
 
         const value = document.createElement('div');
         value.className = 'marker-value';
         value.style.fontSize = '120%';
         value.style.fontWeight = '700';
-        value.textContent = e.value.toFixed(1);
+        const divisor = e.valueDivisor || 1;
+        value.textContent = (e.value / divisor).toFixed(1);
 
-        textBox.appendChild(label);
         textBox.appendChild(value);
         svg.appendChild(textBox);
 
         wrapper.appendChild(svg);
         wrapper._needle = needle;
         wrapper._valueEl = value;
+        wrapper._trail = null;
         wrapper._type = 'gauge';
+        wrapper._valueDivisor = e.valueDivisor || 1;
+        wrapper._gaugeRotation = e.gaugeRotation || 0;
+
+        // Label com nome e unidade DENTRO do gauge (posicionado no SVG)
+        if (e.label || e.unit) {
+            try {
+                const labelSvgText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                labelSvgText.setAttribute('x', center);
+                labelSvgText.setAttribute('y', center + (radius * 0.45));
+                labelSvgText.setAttribute('text-anchor', 'middle');
+                labelSvgText.setAttribute('dominant-baseline', 'middle');
+                labelSvgText.setAttribute('fill', '#999');
+                labelSvgText.setAttribute('font-size', size > 120 ? '8' : '6');
+                labelSvgText.setAttribute('font-weight', '500');
+                labelSvgText.textContent = (e.label || '') + (e.unit ? ` (${e.unit})` : '');
+                svg.appendChild(labelSvgText);
+            } catch (err) {
+                const labelDiv = document.createElement('div');
+                labelDiv.style.position = 'absolute';
+                labelDiv.style.bottom = '-32px';
+                labelDiv.style.left = '50%';
+                labelDiv.style.transform = 'translateX(-50%)';
+                labelDiv.style.whiteSpace = 'nowrap';
+                labelDiv.style.fontSize = '12px';
+                labelDiv.style.color = '#aaa';
+                labelDiv.style.fontWeight = '500';
+                labelDiv.style.textAlign = 'center';
+                labelDiv.textContent = (e.label || '') + (e.unit ? ` (${e.unit})` : '');
+                wrapper.appendChild(labelDiv);
+                wrapper._labelDiv = labelDiv;
+            }
+        }
+
         return wrapper;
     }
 
@@ -320,27 +499,34 @@
         const label = document.createElement('div');
         label.style.fontSize = '11px';
         label.style.color = 'var(--text-light)';
+        label.style.fontWeight = '600';
+        label.style.textShadow = '0 2px 4px rgba(0, 0, 0, 0.8)';
         label.textContent = e.label || e.id;
 
         const led = document.createElement('div');
         led.style.width = '100%';
         led.style.aspectRatio = '1/1';
         led.style.borderRadius = '50%';
-        led.style.background = e.value >= e.threshold ? (e.color || '#00FF00') : (e.colorOff || '#333');
-        led.style.border = '2px solid #555';
-        led.style.boxShadow = e.value >= e.threshold ? `0 0 10px ${e.color || '#00FF00'}` : 'none';
+        const isOn = e.value >= e.threshold;
+        const ledColor = isOn ? (e.color || '#00FF00') : (e.colorOff || '#333');
+        led.style.background = `radial-gradient(circle at 30% 30%, ${isOn ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.05)'}, ${ledColor})`;
+        led.style.border = isOn ? `2px solid ${e.color || '#00FF00'}` : '2px solid #555';
+        led.style.boxShadow = isOn ? `0 0 15px ${e.color || '#00FF00'}, inset 0 0 10px rgba(255,255,255,0.1)` : 'inset 0 2px 4px rgba(0,0,0,0.4)';
         led.style.display = 'flex';
         led.style.alignItems = 'center';
         led.style.justifyContent = 'center';
         led.style.position = 'relative';
+        led.style.transition = 'all 0.2s ease';
 
         // Ícone se configurado
         if (e.icon) {
             const icon = document.createElement('i');
             icon.className = `bi bi-${e.icon}`;
             icon.style.fontSize = '40%';
-            icon.style.color = 'white';
+            icon.style.color = isOn ? 'white' : '#999';
             icon.style.pointerEvents = 'none';
+            icon.style.textShadow = isOn ? `0 0 6px ${e.color || '#00FF00'}` : 'none';
+            icon.style.transition = 'all 0.2s ease';
             led.appendChild(icon);
         }
 
@@ -360,14 +546,14 @@
 
     function createBarMarkerElement(e) {
         const wrapper = document.createElement('div');
-        wrapper.className = 'dashboard-marker';
+        wrapper.className = 'dashboard-marker bar-marker';
         wrapper.dataset.id = e.id;
         wrapper.style.left = (e.pos && e.pos.x != null ? e.pos.x : 50) + '%';
         wrapper.style.top = (e.pos && e.pos.y != null ? e.pos.y : 50) + '%';
         
         const scale = (e.sizeScale || 100) / 100;
-        const widthPx = 150 * scale;
-        const heightPx = 35 * scale;
+        const widthPx = 200 * scale;
+        const heightPx = 50 * scale;
         wrapper.style.width = widthPx + 'px';
         wrapper.style.height = heightPx + 'px';
 
@@ -380,35 +566,80 @@
         cont.style.height = '100%';
 
         const label = document.createElement('div');
-        label.style.fontSize = '12px';
+        label.style.fontSize = '13px';
         label.style.color = 'var(--text-light)';
+        label.style.fontWeight = '600';
         label.textContent = e.label || e.id;
 
+        const barContainer = document.createElement('div');
+        barContainer.style.display = 'flex';
+        barContainer.style.alignItems = 'center';
+        barContainer.style.gap = '8px';
+        barContainer.style.width = '100%';
+        barContainer.style.flex = '1';
+
+        // Ícone na barra
+        if (e.icon) {
+            const iconEl = document.createElement('i');
+            iconEl.className = `bi bi-${e.icon}`;
+            iconEl.style.fontSize = '18px';
+            iconEl.style.color = e.color || 'var(--primary-red)';
+            iconEl.style.flexShrink = '0';
+            iconEl.style.filter = `drop-shadow(0 0 3px ${e.color || 'rgba(139, 0, 0, 0.6)'})`;
+            barContainer.appendChild(iconEl);
+        }
+
         const bar = document.createElement('div');
-        bar.style.width = '100%';
-        bar.style.height = '16px';
-        bar.style.background = '#333';
-        bar.style.border = '1px solid var(--border-color)';
-        bar.style.borderRadius = '8px';
-        bar.style.overflow = 'hidden';
+        bar.style.flex = '1';
+        bar.style.height = '20px';
+        bar.style.background = 'linear-gradient(to bottom, rgba(50, 50, 50, 0.8), rgba(25, 25, 25, 0.9))';
+        bar.style.border = '1px solid #8B0000';
+        bar.style.borderRadius = '10px';
+        bar.style.overflow = 'visible';
         bar.style.position = 'relative';
+        bar.style.boxShadow = 'inset 0 2px 4px rgba(0, 0, 0, 0.5)';
 
         const fill = document.createElement('div');
         fill.style.height = '100%';
-        fill.style.background = e.color || 'var(--primary-red)';
+        fill.style.background = `linear-gradient(to right, ${e.color || 'var(--primary-red)'}, rgba(165, 42, 42, 0.8))`;
         fill.style.width = ((e.value - e.min) / (e.max - e.min)) * 100 + '%';
         fill.style.transition = 'width 0.3s ease';
+        fill.style.boxShadow = `inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 0 8px ${e.color || 'rgba(139, 0, 0, 0.6)'}`;
         bar.appendChild(fill);
 
-        const value = document.createElement('div');
-        value.style.fontSize = '11px';
-        value.style.color = 'var(--light-red)';
-        value.style.textAlign = 'center';
-        value.textContent = e.value.toFixed(1) + ' / ' + e.max.toFixed(1);
+        // Marcador visual (triângulo) mostrando markerValue
+        if (e.markerValue !== undefined && e.markerValue !== null) {
+            const markerPercent = Math.max(0, Math.min(100, ((e.markerValue - e.min) / (e.max - e.min)) * 100));
+            const marker = document.createElement('div');
+            marker.style.position = 'absolute';
+            marker.style.top = '-8px';
+            marker.style.left = markerPercent + '%';
+            marker.style.transform = 'translateX(-50%)';
+            marker.style.width = '0';
+            marker.style.height = '0';
+            marker.style.borderLeft = '6px solid transparent';
+            marker.style.borderRight = '6px solid transparent';
+            marker.style.borderTop = '10px solid ' + (e.markerColor || '#FFD700');
+            marker.style.filter = 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0.8))';
+            marker.style.zIndex = '10';
+            marker.title = `Marcador: ${e.markerValue}`;
+            bar.appendChild(marker);
+            bar._markerIndicator = marker;
+        }
 
+        barContainer.appendChild(bar);
         cont.appendChild(label);
-        cont.appendChild(bar);
+        cont.appendChild(barContainer);
+
+        const value = document.createElement('div');
+        value.style.fontSize = '12px';
+        value.style.color = 'var(--light-red)';
+        value.style.textAlign = 'right';
+        value.style.fontWeight = '600';
+        const unitStr = e.unit ? ` ${e.unit}` : '';
+        value.textContent = e.value.toFixed(1) + ' / ' + e.max.toFixed(1) + unitStr;
         cont.appendChild(value);
+
         wrapper.appendChild(cont);
 
         wrapper._fillEl = fill;
@@ -743,15 +974,24 @@
         } else if (el._type === 'bar-marker' && el._fillEl) {
             const pct = ((newValue - e.min) / (e.max - e.min)) * 100;
             el._fillEl.style.width = pct + '%';
-            if (el._valueEl) el._valueEl.textContent = newValue.toFixed(1) + ' / ' + e.max.toFixed(1);
+            if (el._valueEl) el._valueEl.textContent = newValue.toFixed(1) + ' / ' + e.max.toFixed(1) + (e.unit ? ` ${e.unit}` : '');
+            
+            // Atualizar posição do marcador se existir
+            if (el._fillEl._markerIndicator && e.markerValue !== undefined) {
+                const markerPercent = Math.max(0, Math.min(100, ((e.markerValue - e.min) / (e.max - e.min)) * 100));
+                el._fillEl._markerIndicator.style.left = markerPercent + '%';
+            }
         } else if (el._type === 'led' && el._ledEl) {
             const isActive = newValue >= e.threshold;
-            el._ledEl.style.background = isActive ? (e.color || '#00FF00') : (e.colorOff || '#333');
-            el._ledEl.style.boxShadow = isActive ? `0 0 10px ${e.color || '#00FF00'}` : 'none';
+            const ledColor = isActive ? (e.color || '#00FF00') : (e.colorOff || '#333');
+            el._ledEl.style.background = `radial-gradient(circle at 30% 30%, ${isActive ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.05)'}, ${ledColor})`;
+            el._ledEl.style.border = isActive ? `2px solid ${e.color || '#00FF00'}` : '2px solid #555';
+            el._ledEl.style.boxShadow = isActive ? `0 0 15px ${e.color || '#00FF00'}, inset 0 0 10px rgba(255,255,255,0.1)` : 'inset 0 2px 4px rgba(0,0,0,0.4)';
             // Atualizar ícone se existir
             const iconEl = el._ledEl.querySelector('i');
             if (iconEl && e.icon) {
-                iconEl.style.color = isActive ? 'white' : 'rgba(255,255,255,0.5)';
+                iconEl.style.color = isActive ? 'white' : '#999';
+                iconEl.style.textShadow = isActive ? `0 0 6px ${e.color || '#00FF00'}` : 'none';
             }
         } else if (el._type === 'text' && el._textEl) {
             el._textEl.textContent = e.text || e.label || '';
@@ -872,10 +1112,25 @@
                 const scale = (e.sizeScale || 100) / 100;
                 const sizePx = 120 * scale;
                 preview.style.width = sizePx + 'px';
-                preview.style.height = sizePx + 'px';
+                preview.style.height = (sizePx + 50) + 'px';
                 preview.style.background = e.color || 'var(--primary-red)';
                 preview.style.borderRadius = '50%';
                 preview.style.border = '2px solid white';
+                
+                // Adicionar label e unidade abaixo do gauge
+                const labelText = document.createElement('div');
+                labelText.style.position = 'absolute';
+                labelText.style.bottom = '0';
+                labelText.style.left = '50%';
+                labelText.style.transform = 'translateX(-50%)';
+                labelText.style.fontSize = '10px';
+                labelText.style.color = '#aaa';
+                labelText.style.whiteSpace = 'nowrap';
+                labelText.style.textAlign = 'center';
+                labelText.textContent = (e.label || '') + (e.unit ? ` (${e.unit})` : '');
+                if (e.label || e.unit) {
+                    preview.appendChild(labelText);
+                }
             } else if (e.type === 'bar') {
                 const scale = (e.sizeScale || 100) / 100;
                 const widthPx = 120 * scale;
@@ -885,6 +1140,17 @@
                 preview.style.background = e.color || 'var(--primary-red)';
                 preview.style.borderRadius = '12px';
                 preview.style.border = '2px solid white';
+                preview.style.display = 'flex';
+                preview.style.alignItems = 'center';
+                preview.style.justifyContent = 'center';
+                
+                // Mostrar label do bar
+                const barLabel = document.createElement('div');
+                barLabel.style.fontSize = '9px';
+                barLabel.style.color = 'white';
+                barLabel.style.fontWeight = '600';
+                barLabel.textContent = (e.label || 'Bar') + (e.unit ? ` ${e.unit}` : '');
+                preview.appendChild(barLabel);
             } else if (e.type === 'bar-marker') {
                 const scale = (e.sizeScale || 100) / 100;
                 const widthPx = 150 * scale;
@@ -894,6 +1160,17 @@
                 preview.style.background = e.color || 'var(--primary-red)';
                 preview.style.borderRadius = '8px';
                 preview.style.border = '2px solid white';
+                preview.style.display = 'flex';
+                preview.style.alignItems = 'center';
+                preview.style.justifyContent = 'center';
+                
+                // Mostrar label do bar-marker
+                const markerLabel = document.createElement('div');
+                markerLabel.style.fontSize = '9px';
+                markerLabel.style.color = 'white';
+                markerLabel.style.fontWeight = '600';
+                markerLabel.textContent = (e.label || 'Marker') + (e.unit ? ` ${e.unit}` : '');
+                preview.appendChild(markerLabel);
             } else if (e.type === 'led') {
                 const scale = (e.sizeScale || 100) / 100;
                 const sizePx = 50 * scale;
@@ -1030,7 +1307,7 @@
             });
         });
 
-        rightPanel.appendChild(canvas);
+        rightPanel.appendChild(canvasContainer);
 
         // Edit panel function
         const showEditPanel = (idx) => {
@@ -1141,7 +1418,14 @@
             const gaugeBarFields = [
                 { label: 'Mín', key: 'min', type: 'number' },
                 { label: 'Máx', key: 'max', type: 'number' },
-                { label: 'Valor', key: 'value', type: 'number' }
+                { label: 'Valor', key: 'value', type: 'number' },
+                { label: 'Divisor de Valor', key: 'valueDivisor', type: 'number', step: '1' },
+                { label: 'Rótulo (Label)', key: 'label', type: 'text', placeholder: 'Ex: Temperatura, RPM' },
+                { label: 'Unidade', key: 'unit', type: 'text', placeholder: 'Ex: °C, km/h, bar' },
+                { label: 'Rotação do Gauge (°)', key: 'gaugeRotation', type: 'range', min: '0', max: '360', step: '5' },
+                { label: 'Zona Perigo - Inicial', key: 'dangerStart', type: 'number', placeholder: 'Deixe vazio sem perigo' },
+                { label: 'Zona Perigo - Final', key: 'dangerEnd', type: 'number' },
+                { label: 'Zona Perigo - Cor', key: 'dangerColor', type: 'color' }
             ];
 
             const barMarkerFields = [
@@ -1149,6 +1433,8 @@
                 { label: 'Máx', key: 'max', type: 'number' },
                 { label: 'Valor', key: 'value', type: 'number' },
                 { label: 'Valor Marcador', key: 'markerValue', type: 'number' },
+                { label: 'Rótulo (Label)', key: 'label', type: 'text', placeholder: 'Ex: Pressão, Carga' },
+                { label: 'Unidade', key: 'unit', type: 'text', placeholder: 'Ex: bar, %, psi' },
                 { label: 'Cor Marcador', key: 'markerColor', type: 'color' }
             ];
 
@@ -1272,7 +1558,7 @@
                     inp.min = f.min || '0';
                     inp.max = f.max || '100';
                     inp.step = f.step || '1';
-                    inp.value = e[f.key] || '100';
+                    inp.value = e[f.key] || (f.key === 'iconRotation' ? '0' : '100');
                     inp.style.width = '100%';
                     inp.style.cursor = 'pointer';
 
@@ -1281,10 +1567,18 @@
                     valueDisplay.style.color = 'var(--light-red)';
                     valueDisplay.style.marginTop = '4px';
                     valueDisplay.style.fontWeight = '600';
-                    valueDisplay.textContent = inp.value + '%';
+                    
+                    // Determinar unidade baseada na chave do campo
+                    const unit = f.key === 'iconRotation' ? '°' : '%';
+                    valueDisplay.textContent = inp.value + unit;
 
                     inp.addEventListener('input', () => {
-                        valueDisplay.textContent = inp.value + '%';
+                        valueDisplay.textContent = inp.value + unit;
+                        // Atualizar elemento em tempo real para campos de rotação
+                        if (f.key === 'iconRotation') {
+                            elements[idx][f.key] = parseFloat(inp.value);
+                            renderEditMode();
+                        }
                     });
 
                     row.appendChild(lbl);
