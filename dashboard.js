@@ -7,10 +7,14 @@
 */
 (function () {
     const STORAGE_KEY = 'dsw_dashboard_elements_v1';
-    const container = document.getElementById('dashboardContent');
-    const modal = document.getElementById('dashboardModal');
+    const viewContainer = document.getElementById('dashboardContent');
+    const viewModal = document.getElementById('dashboardModal');
+    let container = viewContainer;
+    let modal = viewModal;
     const btnOpen = document.getElementById('dashboardBtn');
     const btnClose = document.getElementById('dashboardCloseBtn');
+    let editModal = null;
+    let editContainer = null;
 
     if (!container || !modal || !btnOpen || !btnClose) {
         console.warn('Dashboard elements missing in DOM.');
@@ -96,6 +100,57 @@
 
     elements = loadElements();
 
+    function clampPercent(val) {
+        const n = parseFloat(val);
+        if (isNaN(n)) return 50;
+        return Math.min(98, Math.max(2, n));
+    }
+
+    // Share code helpers: encode current elements to single-line string and decode back
+    const SHARE_PREFIX = 'DSWCFG1:';
+
+    function generateShareCode() {
+        try {
+            const json = JSON.stringify(elements);
+            const base = btoa(encodeURIComponent(json));
+            return SHARE_PREFIX + base;
+        } catch (err) {
+            console.error('Erro ao gerar código de compartilhamento', err);
+            return '';
+        }
+    }
+
+    function importShareCode(code) {
+        try {
+            if (!code || typeof code !== 'string') throw new Error('Código inválido');
+            // accept prefixed code or raw base64
+            let payload = code.trim();
+            if (payload.startsWith(SHARE_PREFIX)) payload = payload.slice(SHARE_PREFIX.length);
+
+            // Try decode
+            let json = null;
+            try {
+                json = decodeURIComponent(atob(payload));
+            } catch (err) {
+                // fallback: maybe it was plain ascii JSON
+                try {
+                    json = atob(payload);
+                } catch (err2) {
+                    // last resort: assume payload is raw JSON
+                    json = payload;
+                }
+            }
+
+            const parsed = JSON.parse(json);
+            if (!Array.isArray(parsed)) throw new Error('Formato inválido');
+            elements = parsed;
+            saveElements(elements);
+            return { ok: true };
+        } catch (err) {
+            console.error('Erro ao importar código:', err);
+            return { ok: false, error: err.message || String(err) };
+        }
+    }
     // Aguardar carregamento da configuração do ecu-manager
     setTimeout(() => {
         loadDashboardButtonsConfig();
@@ -1073,21 +1128,137 @@
         }
     }
 
-    function renderViewMode() {
-        if (!container) return;
-        container.innerHTML = '';
-        container.style.position = 'relative';
-        container.style.width = '100%';
-        container.style.height = '100%';
+    function renderViewMode(targetContainer = container) {
+        if (!targetContainer) return;
+        targetContainer.innerHTML = '';
+        targetContainer.style.position = 'relative';
+        targetContainer.style.width = '100%';
+        targetContainer.style.height = '100%';
         
         elements.forEach(e => {
-            const el = createElement(e);
-            container.appendChild(el);
-            if (e.type === 'led' && e.blink && e.value >= e.threshold) {
-                startBlinking(el);
+            // Alimentar com dados do CommonInfo se fieldId estiver configurado
+            let elementWithData = e;
+            if (window.CommonInfo && window.CommonInfo.data && e.fieldId) {
+                const fieldData = window.CommonInfo.data[e.fieldId];
+                if (fieldData) {
+                    elementWithData = JSON.parse(JSON.stringify(e));
+                    elementWithData.value = fieldData.value !== undefined ? fieldData.value : e.value;
+                    if (!e.label) elementWithData.label = fieldData.title;
+                    if (!e.unit) elementWithData.unit = fieldData.unit;
+                }
+            }
+
+            const el = createElement(elementWithData);
+            targetContainer.appendChild(el);
+            // In view mode we must ensure widgets never escape the modal bounds.
+            // Positioning here computes px bounds and clamps left/top so the whole element stays inside (0%..100%).
+            try {
+                const frameRect = container.getBoundingClientRect();
+                const elRect = el.getBoundingClientRect();
+                // desired percent positions (fallback to center)
+                const desiredX = (e.pos && e.pos.x != null) ? parseFloat(e.pos.x) : 50;
+                const desiredY = (e.pos && e.pos.y != null) ? parseFloat(e.pos.y) : 50;
+
+                // convert desired percent to px inside container
+                const desiredLeftPx = (desiredX / 100) * frameRect.width;
+                const desiredTopPx = (desiredY / 100) * frameRect.height;
+
+                // clamp so element fully fits
+                const clampedLeftPx = Math.min(Math.max(0, desiredLeftPx), Math.max(0, frameRect.width - elRect.width));
+                const clampedTopPx = Math.min(Math.max(0, desiredTopPx), Math.max(0, frameRect.height - elRect.height));
+
+                // set left/top as percentage of container and remove centering transform so 0%..100% maps to modal extents
+                el.style.left = ((clampedLeftPx / frameRect.width) * 100) + '%';
+                el.style.top = ((clampedTopPx / frameRect.height) * 100) + '%';
+                el.style.transform = 'translate(0, 0)';
+            } catch (err) {
+                // fallback to safe percent clamp
+                try {
+                    if (el && el.style) {
+                        if (el.style.left) {
+                            const l = clampPercent(el.style.left.replace('%', ''));
+                            el.style.left = l + '%';
+                        }
+                        if (el.style.top) {
+                            const t = clampPercent(el.style.top.replace('%', ''));
+                            el.style.top = t + '%';
+                        }
+                    }
+                } catch (err2) {
+                    console.warn('Erro ao ajustar posição do elemento:', err2);
+                }
+            }
+            
+            // Para LED com condições, avaliar se deve piscar
+            if (e.type === 'led' && e.blink) {
+                let shouldBlink = false;
+                
+                // Se tem condição configurada
+                if (e.sourceElementId && e.conditionOperator && e.conditionThreshold !== undefined) {
+                    const sourceElement = elements.find(el => el.id === e.sourceElementId);
+                    if (sourceElement && window.CommonInfo && window.CommonInfo.data && sourceElement.fieldId) {
+                        const sourceFieldData = window.CommonInfo.data[sourceElement.fieldId];
+                        const sourceValue = sourceFieldData ? sourceFieldData.value : sourceElement.value;
+                        
+                        // Avaliar condição
+                        try {
+                            shouldBlink = eval(`${sourceValue} ${e.conditionOperator} ${e.conditionThreshold}`);
+                        } catch (err) {
+                            console.error('Erro ao avaliar condição LED:', err);
+                        }
+                    }
+                } else {
+                    // Sem condição, usar valor direto
+                    shouldBlink = elementWithData.value >= (e.threshold || 0);
+                }
+                
+                if (shouldBlink) {
+                    startBlinking(el);
+                }
             }
         });
     }
+
+    // Atualizar elementos quando CommonInfo mudar
+    function updateFromCommonInfo() {
+        if (!editMode) {
+            elements.forEach((e, idx) => {
+                if (e.fieldId && window.CommonInfo && window.CommonInfo.data) {
+                    const fieldData = window.CommonInfo.data[e.fieldId];
+                    if (fieldData && fieldData.value !== e.value) {
+                        const el = container.querySelector(`[data-id="${e.id}"]`);
+                        if (el) {
+                            // Atualizar valor do elemento
+                            let newValue = fieldData.value;
+                            
+                            // Se for LED com condição, calcular se deve piscar
+                            if (e.type === 'led' && e.blink && e.sourceElementId && e.conditionOperator) {
+                                const sourceElement = elements.find(el => el.id === e.sourceElementId);
+                                if (sourceElement && window.CommonInfo.data[sourceElement.fieldId]) {
+                                    const sourceValue = window.CommonInfo.data[sourceElement.fieldId].value;
+                                    try {
+                                        const shouldBlink = eval(`${sourceValue} ${e.conditionOperator} ${e.conditionThreshold}`);
+                                        if (shouldBlink) {
+                                            startBlinking(el);
+                                        } else {
+                                            stopBlinking(e.id);
+                                        }
+                                    } catch (err) {
+                                        console.error('Erro ao avaliar condição LED:', err);
+                                    }
+                                }
+                            }
+                            
+                            updateElement(el, newValue);
+                        }
+                    }
+                }
+            });
+        }
+    }
+
+    // Atualizar a cada 100ms
+    setInterval(updateFromCommonInfo, 100);
 
     function renderEditMode() {
         if (!container) return;
@@ -1115,6 +1286,72 @@
         leftContent.style.overflowY = 'auto';
         leftContent.style.padding = '20px';
 
+        // Share/Import config UI (one-line code)
+        const shareSection = document.createElement('div');
+        shareSection.style.marginBottom = '12px';
+        shareSection.style.padding = '10px';
+        shareSection.style.border = '1px solid var(--border-color)';
+        shareSection.style.borderRadius = '6px';
+        shareSection.style.background = 'rgba(0,0,0,0.04)';
+
+        const shareTitle = document.createElement('div');
+        shareTitle.style.fontSize = '13px';
+        shareTitle.style.fontWeight = '700';
+        shareTitle.style.color = 'var(--light-red)';
+        shareTitle.style.marginBottom = '8px';
+        shareTitle.textContent = 'Compartilhar / Importar Configuração';
+        shareSection.appendChild(shareTitle);
+
+        // shareRow removed: use the 'Gerar & Copiar Configuração' button under '+ Novo Elemento' instead
+
+        const importRow = document.createElement('div');
+        importRow.style.display = 'flex';
+        importRow.style.gap = '8px';
+        importRow.style.marginTop = '10px';
+
+        const importInput = document.createElement('input');
+        importInput.type = 'text';
+        importInput.placeholder = 'Cole o código aqui para importar...';
+        importInput.style.flex = '1';
+        importInput.style.padding = '8px';
+        importInput.style.background = 'var(--bg-dark)';
+        importInput.style.border = '1px solid var(--border-color)';
+        importInput.style.color = 'var(--text-light)';
+        importInput.style.borderRadius = '4px';
+        importRow.appendChild(importInput);
+
+        const importBtn = document.createElement('button');
+        importBtn.textContent = 'Importar';
+        importBtn.style.padding = '8px 12px';
+        importBtn.style.background = 'var(--border-color)';
+        importBtn.style.border = 'none';
+        importBtn.style.color = 'var(--text-light)';
+        importBtn.style.borderRadius = '4px';
+        importBtn.style.cursor = 'pointer';
+        importBtn.addEventListener('click', () => {
+            const code = importInput.value.trim();
+            if (!code) return;
+            const res = importShareCode(code);
+            if (res.ok) {
+                // re-render edit mode to reflect imported elements
+                renderEditMode();
+            } else {
+                alert('Código inválido: ' + (res.error || 'erro desconhecido'));
+            }
+        });
+        importRow.appendChild(importBtn);
+
+        shareSection.appendChild(importRow);
+
+        leftContent.appendChild(shareSection);
+
+        // Body area for element-specific fields (kept separate so shareSection remains)
+        const leftBody = document.createElement('div');
+        leftBody.className = 'left-body';
+        leftBody.style.flex = '1';
+        leftBody.style.overflowY = 'auto';
+        leftContent.appendChild(leftBody);
+
         const leftFooter = document.createElement('div');
         leftFooter.style.padding = '15px 20px';
         leftFooter.style.borderTop = '1px solid var(--border-color)';
@@ -1125,21 +1362,36 @@
         rightPanel.style.flex = '1';
         rightPanel.style.position = 'relative';
         rightPanel.style.background = 'rgba(0,0,0,0.3)';
-        rightPanel.style.overflow = 'auto';
         rightPanel.style.display = 'flex';
         rightPanel.style.alignItems = 'center';
         rightPanel.style.justifyContent = 'center';
         rightPanel.style.padding = '20px';
+        rightPanel.style.overflow = 'hidden';
 
-        // Canvas container com mesma proporção do dashboard
+        // Canvas container com mesma proporção do dashboard - PAINEL DELIMITADOR
         const canvasContainer = document.createElement('div');
         canvasContainer.style.position = 'relative';
         canvasContainer.style.width = '100%';
         canvasContainer.style.maxWidth = '1200px';
         canvasContainer.style.aspectRatio = '16 / 9';
-        canvasContainer.style.background = 'rgba(0,0,0,0.5)';
-        canvasContainer.style.border = '2px dashed var(--border-color)';
-        canvasContainer.style.borderRadius = '4px';
+        canvasContainer.style.background = 'linear-gradient(135deg, rgba(0,0,0,0.7) 0%, rgba(20,20,20,0.9) 100%)';
+        canvasContainer.style.borderRadius = '8px';
+        canvasContainer.style.overflow = 'hidden';
+        canvasContainer.style.boxShadow = '0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.1)';
+        canvasContainer.style.border = '1px solid rgba(139,0,0,0.3)';
+
+        // Texto indicador do painel
+        const panelIndicator = document.createElement('div');
+        panelIndicator.style.position = 'absolute';
+        panelIndicator.style.top = '8px';
+        panelIndicator.style.left = '12px';
+        panelIndicator.style.fontSize = '11px';
+        panelIndicator.style.color = 'rgba(169,169,169,0.6)';
+        panelIndicator.style.fontWeight = '600';
+        panelIndicator.style.zIndex = '1';
+        panelIndicator.style.pointerEvents = 'none';
+        panelIndicator.textContent = 'PREVIEW DO PAINEL';
+        canvasContainer.appendChild(panelIndicator);
 
         const canvas = document.createElement('div');
         canvas.style.position = 'absolute';
@@ -1151,139 +1403,65 @@
 
         // Add element previews with drag
         elements.forEach((e, idx) => {
-            const preview = document.createElement('div');
+            // Alimentar o elemento com valor real do CommonInfo se disponível
+            const elementCopy = JSON.parse(JSON.stringify(e)); // Deep copy
+            
+            if (window.CommonInfo && window.CommonInfo.data && elementCopy.fieldId) {
+                const fieldData = window.CommonInfo.data[elementCopy.fieldId];
+                if (fieldData) {
+                    elementCopy.value = fieldData.value || elementCopy.value;
+                    if (!elementCopy.label) elementCopy.label = fieldData.title;
+                    if (!elementCopy.unit) elementCopy.unit = fieldData.unit;
+                }
+            }
+
+            // Criar elemento REAL usando a mesma função que a dashboard usa
+            let realElement;
+            try {
+                if (elementCopy.type === 'gauge') {
+                    realElement = createGaugeElement(elementCopy);
+                } else if (elementCopy.type === 'bar') {
+                    realElement = createBarElement(elementCopy);
+                } else if (elementCopy.type === 'bar-marker') {
+                    realElement = createBarMarkerElement(elementCopy);
+                } else if (elementCopy.type === 'led') {
+                    realElement = createLEDElement(elementCopy);
+                } else if (elementCopy.type === 'text') {
+                    realElement = createTextElement(elementCopy);
+                } else if (elementCopy.type === 'conditional-text') {
+                    realElement = createConditionalTextElement(elementCopy);
+                } else if (elementCopy.type === 'button') {
+                    realElement = createButtonElement(elementCopy);
+                }
+            } catch (err) {
+                console.error('Erro ao criar elemento preview:', err);
+            }
+
+            if (!realElement) return;
+
+            const preview = realElement;
             preview.className = 'dashboard-marker edit-draggable';
             preview.dataset.id = e.id;
             preview.dataset.idx = idx;
             preview.style.position = 'absolute';
             preview.style.left = (e.pos.x) + '%';
             preview.style.top = (e.pos.y) + '%';
+            // Garantir que o preview seja posicionado dentro dos limites visíveis
+            try {
+                const cl = clampPercent(preview.style.left.replace('%', ''));
+                const ct = clampPercent(preview.style.top.replace('%', ''));
+                preview.style.left = cl + '%';
+                preview.style.top = ct + '%';
+            } catch (err) {
+                // ignorar
+            }
             preview.style.transform = 'translate(-50%, -50%)';
             preview.style.cursor = 'grab';
             preview.style.userSelect = 'none';
             preview.style.zIndex = '10';
-
-            // Mini preview com tamanho proporcional (em % do canvas)
-            if (e.type === 'gauge') {
-                const scale = (e.sizeScale || 100) / 100;
-                const gaugeWidthPercent = 12 * scale;
-                preview.style.width = gaugeWidthPercent + '%';
-                preview.style.paddingBottom = gaugeWidthPercent + '%';
-                preview.style.background = e.color || 'var(--primary-red)';
-                preview.style.borderRadius = '50%';
-                preview.style.border = '2px solid white';
-                preview.style.position = 'relative';
-
-                // Label inside gauge preview
-                const labelText = document.createElement('div');
-                labelText.style.position = 'absolute';
-                labelText.style.bottom = '12%';
-                labelText.style.left = '50%';
-                labelText.style.transform = 'translateX(-50%)';
-                labelText.style.fontSize = '0.7em';
-                labelText.style.color = '#aaa';
-                labelText.style.whiteSpace = 'nowrap';
-                labelText.style.textAlign = 'center';
-                labelText.style.pointerEvents = 'none';
-                labelText.textContent = (e.label || '') + (e.unit ? ` (${e.unit})` : '');
-                if (e.label || e.unit) preview.appendChild(labelText);
-            } else if (e.type === 'bar') {
-                const scale = (e.sizeScale || 100) / 100;
-                const barWidthPercent = 15 * scale;
-                const barHeightPercent = 8 * scale;
-                preview.style.width = barWidthPercent + '%';
-                preview.style.paddingBottom = barHeightPercent + '%';
-                preview.style.background = e.color || 'var(--primary-red)';
-                preview.style.borderRadius = '12px';
-                preview.style.border = '2px solid white';
-                preview.style.display = 'flex';
-                preview.style.alignItems = 'center';
-                preview.style.justifyContent = 'center';
-                preview.style.position = 'relative';
-
-                const barLabel = document.createElement('div');
-                barLabel.style.fontSize = '0.7em';
-                barLabel.style.color = 'white';
-                barLabel.style.fontWeight = '600';
-                barLabel.textContent = (e.label || 'Bar') + (e.unit ? ` ${e.unit}` : '');
-                preview.appendChild(barLabel);
-            } else if (e.type === 'bar-marker') {
-                const scale = (e.sizeScale || 100) / 100;
-                const markerWidthPercent = 18 * scale;
-                const markerHeightPercent = 10 * scale;
-                preview.style.width = markerWidthPercent + '%';
-                preview.style.paddingBottom = markerHeightPercent + '%';
-                preview.style.background = e.color || 'var(--primary-red)';
-                preview.style.borderRadius = '8px';
-                preview.style.border = '2px solid white';
-                preview.style.display = 'flex';
-                preview.style.alignItems = 'center';
-                preview.style.justifyContent = 'center';
-                preview.style.position = 'relative';
-
-                const markerLabel = document.createElement('div');
-                markerLabel.style.fontSize = '0.7em';
-                markerLabel.style.color = 'white';
-                markerLabel.style.fontWeight = '600';
-                markerLabel.textContent = (e.label || 'Marker') + (e.unit ? ` ${e.unit}` : '');
-                preview.appendChild(markerLabel);
-            } else if (e.type === 'led') {
-                const scale = (e.sizeScale || 100) / 100;
-                const ledWidthPercent = 8 * scale;
-                preview.style.width = ledWidthPercent + '%';
-                preview.style.paddingBottom = ledWidthPercent + '%';
-                preview.style.background = e.color || '#00FF00';
-                preview.style.borderRadius = '50%';
-                preview.style.border = '2px solid white';
-                preview.style.boxShadow = `0 0 15px ${e.color || '#00FF00'}`;
-            } else if (e.type === 'text') {
-                preview.style.width = 'auto';
-                preview.style.height = 'auto';
-                preview.style.padding = '6px 12px';
-                preview.style.background = 'rgba(255,255,255,0.1)';
-                preview.style.borderRadius = '4px';
-                preview.style.border = '1px solid white';
-                preview.style.color = e.color || 'var(--text-light)';
-                preview.style.fontSize = '0.8em';
-                preview.textContent = (e.text || 'Texto').substring(0, 15);
-            } else if (e.type === 'conditional-text') {
-                preview.style.width = 'auto';
-                preview.style.height = 'auto';
-                preview.style.padding = '8px 12px';
-                preview.style.background = 'rgba(0,200,0,0.2)';
-                preview.style.borderRadius = '4px';
-                preview.style.border = '2px solid #00FF00';
-                preview.style.color = '#00FF00';
-                preview.style.fontSize = '0.8em';
-                preview.style.fontWeight = '600';
-                preview.textContent = 'Condicional';
-            } else if (e.type === 'button') {
-                const scale = (e.sizeScale || 100) / 100;
-                preview.style.width = 'auto';
-                preview.style.height = 'auto';
-                preview.style.padding = '8px 16px';
-                preview.style.background = e.color || 'var(--primary-red)';
-                preview.style.borderRadius = '6px';
-                preview.style.border = '2px solid white';
-                preview.style.color = 'white';
-                preview.style.fontSize = '0.8em';
-                preview.style.fontWeight = '600';
-                preview.textContent = e.label || 'Botão';
-            }
-
-            // Label
-            const label = document.createElement('div');
-            label.style.position = 'absolute';
-            label.style.bottom = '-22px';
-            label.style.left = '50%';
-            label.style.transform = 'translateX(-50%)';
-            label.style.color = 'var(--text-light)';
-            label.style.fontSize = '11px';
-            label.style.fontWeight = '600';
-            label.style.whiteSpace = 'nowrap';
-            label.textContent = e.label || e.id;
-            preview.appendChild(label);
-
+            
+            // NÃO adicionar estilos simples - usar o elemento real já criado criado pelas funções
+            
             // Drag logic
             let dragging = false;
             let start = { x: 0, y: 0 };
@@ -1368,13 +1546,14 @@
         // Edit panel function
         const showEditPanel = (idx) => {
             const e = elements[idx];
-            leftContent.innerHTML = '';
+            const leftBody = leftContent.querySelector('.left-body') || leftContent;
+            leftBody.innerHTML = '';
 
             const title = document.createElement('h3');
             title.style.color = 'var(--light-red)';
             title.style.marginBottom = '15px';
             title.textContent = e.label || e.id;
-            leftContent.appendChild(title);
+            leftBody.appendChild(title);
 
             const infoBox = document.createElement('div');
             infoBox.style.padding = '10px';
@@ -1385,7 +1564,7 @@
             infoBox.style.color = 'var(--text-light)';
             infoBox.style.border = '1px solid rgba(0,200,0,0.3)';
             infoBox.textContent = `Tipo: ${e.type} | Posição: (${Math.round(e.pos.x)}%, ${Math.round(e.pos.y)}%)`;
-            leftContent.appendChild(infoBox);
+            leftBody.appendChild(infoBox);
 
             const removeBtn = document.createElement('button');
             removeBtn.textContent = '✕ Remover';
@@ -1401,7 +1580,7 @@
                 elements.splice(idx, 1);
                 renderEditMode();
             });
-            leftContent.appendChild(removeBtn);
+            leftBody.appendChild(removeBtn);
 
             const showButtonConfigInfo = (btnConfig) => {
                 const infoPanel = leftContent.querySelector('.button-config-info');
@@ -1452,7 +1631,7 @@
                     });
                 }
 
-                leftContent.insertBefore(infoPanelDiv, leftContent.querySelector('h3').nextSibling);
+                leftBody.insertBefore(infoPanelDiv, leftBody.querySelector('h3').nextSibling);
             };
 
             // Se for botão e tiver config, mostrar informações iniciais
@@ -1468,8 +1647,18 @@
                 { label: 'Tipo', key: 'type', type: 'select', options: ['gauge', 'bar', 'bar-marker', 'led', 'text', 'conditional-text', 'button'] },
                 { label: 'Cor', key: 'color', type: 'color' },
                 { label: 'Tamanho (%)', key: 'sizeScale', type: 'range', min: '25', max: '444', step: '5' },
-                { label: 'Ícone (Bootstrap)', key: 'icon', type: 'text', placeholder: 'Ex: speedometer, power, fuel-pump' }
+                { label: 'Ícone (Bootstrap)', key: 'icon', type: 'text', placeholder: 'Ex: speedometer, power, fuel-pump' },
+                { label: '📡 Campo de Dados', key: 'fieldId', type: 'select', options: [], placeholder: 'Selecione um campo (opcional)' }
             ];
+
+            // Populer opções de fieldId do CommonInfo
+            if (window.CommonInfo && window.CommonInfo.config && window.CommonInfo.config.dataFields) {
+                const fieldOptions = window.CommonInfo.config.dataFields.map(f => ({
+                    value: f.id,
+                    label: `${f.title} (${f.id})`
+                }));
+                commonFields[5].options = fieldOptions; // fieldId é o 6º campo (index 5)
+            }
 
             const gaugeBarFields = [
                 { label: 'Mín', key: 'min', type: 'number' },
@@ -1687,7 +1876,7 @@
 
                 row.appendChild(lbl);
                 row.appendChild(inp);
-                leftContent.appendChild(row);
+                leftBody.appendChild(row);
 
                 // Se for campo de ícone, adicionar seletor visual
                 if (f.key === 'icon') {
@@ -1752,9 +1941,139 @@
                     });
 
                     iconPickerContainer.appendChild(iconGrid);
-                    leftContent.appendChild(iconPickerContainer);
+                    leftBody.appendChild(iconPickerContainer);
                 }
             });
+
+            // ===== SEÇÃO DE CONDIÇÕES PARA LED =====
+            if (e.type === 'led') {
+                const conditionSection = document.createElement('div');
+                conditionSection.style.padding = '15px';
+                conditionSection.style.background = 'rgba(0,150,200,0.1)';
+                conditionSection.style.borderRadius = '6px';
+                conditionSection.style.marginBottom = '15px';
+                conditionSection.style.border = '1px solid rgba(0,150,200,0.3)';
+
+                const condTitle = document.createElement('div');
+                condTitle.style.fontSize = '13px';
+                condTitle.style.fontWeight = '600';
+                condTitle.style.color = 'var(--light-red)';
+                condTitle.style.marginBottom = '12px';
+                condTitle.textContent = '⚡ Condição para Acender';
+
+                conditionSection.appendChild(condTitle);
+
+                // Source: Gauge ou outro elemento
+                const sourceLabel = document.createElement('label');
+                sourceLabel.style.color = 'var(--text-light)';
+                sourceLabel.style.fontSize = '12px';
+                sourceLabel.style.fontWeight = '600';
+                sourceLabel.style.display = 'block';
+                sourceLabel.style.marginBottom = '6px';
+                sourceLabel.textContent = 'Fonte (Elemento):';
+                conditionSection.appendChild(sourceLabel);
+
+                const sourceSelect = document.createElement('select');
+                sourceSelect.style.width = '100%';
+                sourceSelect.style.padding = '6px 8px';
+                sourceSelect.style.background = 'var(--bg-dark)';
+                sourceSelect.style.border = '1px solid var(--border-color)';
+                sourceSelect.style.color = 'var(--text-light)';
+                sourceSelect.style.borderRadius = '4px';
+                sourceSelect.style.marginBottom = '12px';
+
+                const noneOption = document.createElement('option');
+                noneOption.value = '';
+                noneOption.textContent = '--- Nenhuma (usar valor direto) ---';
+                sourceSelect.appendChild(noneOption);
+
+                // Adicionar opções de elementos (apenas gauge e bar)
+                elements.forEach((elem, i) => {
+                    if ((elem.type === 'gauge' || elem.type === 'bar' || elem.type === 'bar-marker') && i !== idx) {
+                        const opt = document.createElement('option');
+                        opt.value = elem.id;
+                        opt.textContent = `${elem.label || elem.id} (${elem.type})`;
+                        opt.selected = e.sourceElementId === elem.id;
+                        sourceSelect.appendChild(opt);
+                    }
+                });
+
+                sourceSelect.addEventListener('change', () => {
+                    elements[idx].sourceElementId = sourceSelect.value || null;
+                });
+
+                conditionSection.appendChild(sourceSelect);
+
+                // Operador
+                const opLabel = document.createElement('label');
+                opLabel.style.color = 'var(--text-light)';
+                opLabel.style.fontSize = '12px';
+                opLabel.style.fontWeight = '600';
+                opLabel.style.display = 'block';
+                opLabel.style.marginBottom = '6px';
+                opLabel.textContent = 'Operador:';
+                conditionSection.appendChild(opLabel);
+
+                const opSelect = document.createElement('select');
+                opSelect.style.width = '100%';
+                opSelect.style.padding = '6px 8px';
+                opSelect.style.background = 'var(--bg-dark)';
+                opSelect.style.border = '1px solid var(--border-color)';
+                opSelect.style.color = 'var(--text-light)';
+                opSelect.style.borderRadius = '4px';
+                opSelect.style.marginBottom = '12px';
+
+                const operators = [
+                    { value: '>=', label: 'Maior ou igual (≥)' },
+                    { value: '>', label: 'Maior (>)' },
+                    { value: '<=', label: 'Menor ou igual (≤)' },
+                    { value: '<', label: 'Menor (<)' },
+                    { value: '==', label: 'Igual (=)' },
+                    { value: '!=', label: 'Diferente (≠)' }
+                ];
+
+                operators.forEach(op => {
+                    const opt = document.createElement('option');
+                    opt.value = op.value;
+                    opt.textContent = op.label;
+                    opt.selected = e.conditionOperator === op.value;
+                    opSelect.appendChild(opt);
+                });
+
+                opSelect.addEventListener('change', () => {
+                    elements[idx].conditionOperator = opSelect.value;
+                });
+
+                conditionSection.appendChild(opSelect);
+
+                // Valor limite
+                const thresholdLabel = document.createElement('label');
+                thresholdLabel.style.color = 'var(--text-light)';
+                thresholdLabel.style.fontSize = '12px';
+                thresholdLabel.style.fontWeight = '600';
+                thresholdLabel.style.display = 'block';
+                thresholdLabel.style.marginBottom = '6px';
+                thresholdLabel.textContent = 'Valor Limite:';
+                conditionSection.appendChild(thresholdLabel);
+
+                const thresholdInput = document.createElement('input');
+                thresholdInput.type = 'number';
+                thresholdInput.style.width = '100%';
+                thresholdInput.style.padding = '6px 8px';
+                thresholdInput.style.background = 'var(--bg-dark)';
+                thresholdInput.style.border = '1px solid var(--border-color)';
+                thresholdInput.style.color = 'var(--text-light)';
+                thresholdInput.style.borderRadius = '4px';
+                thresholdInput.value = e.conditionThreshold || 0;
+
+                thresholdInput.addEventListener('change', () => {
+                    elements[idx].conditionThreshold = parseFloat(thresholdInput.value);
+                });
+
+                conditionSection.appendChild(thresholdInput);
+
+                leftContent.appendChild(conditionSection);
+            }
         };
 
         // Add new element button
@@ -1867,8 +2186,123 @@
             leftContent.appendChild(tmpPanel);
         });
 
+        // Add Generate & Copy button (opens small modal) under the New Element button area
+        const shareConfigBtn = document.createElement('button');
+        shareConfigBtn.textContent = 'Gerar & Copiar Configuração';
+        shareConfigBtn.style.width = '100%';
+        shareConfigBtn.style.marginTop = '10px';
+        shareConfigBtn.style.padding = '10px 16px';
+        shareConfigBtn.style.background = 'linear-gradient(135deg, #333 0%, #222 100%)';
+        shareConfigBtn.style.border = '1px solid var(--border-color)';
+        shareConfigBtn.style.color = 'var(--text-light)';
+        shareConfigBtn.style.borderRadius = '6px';
+        shareConfigBtn.style.cursor = 'pointer';
+
+        shareConfigBtn.addEventListener('click', () => {
+            // create a small modal showing the one-line code
+            const modalId = 'dsw-share-modal';
+            let existing = document.getElementById(modalId);
+            if (existing) {
+                existing.remove();
+            }
+
+            const overlay = document.createElement('div');
+            overlay.id = modalId;
+            overlay.style.position = 'fixed';
+            overlay.style.left = '0';
+            overlay.style.top = '0';
+            overlay.style.right = '0';
+            overlay.style.bottom = '0';
+            overlay.style.display = 'flex';
+            overlay.style.alignItems = 'center';
+            overlay.style.justifyContent = 'center';
+            overlay.style.background = 'rgba(0,0,0,0.6)';
+            overlay.style.zIndex = '20000';
+
+            const panel = document.createElement('div');
+            panel.style.width = 'min(880px, 92%)';
+            panel.style.maxWidth = '920px';
+            panel.style.background = 'var(--bg-darker)';
+            panel.style.border = '1px solid var(--border-color)';
+            panel.style.borderRadius = '10px';
+            panel.style.padding = '18px';
+            panel.style.boxShadow = '0 8px 36px rgba(0,0,0,0.6)';
+
+            const h = document.createElement('div');
+            h.textContent = 'Código único (uma linha)';
+            h.style.fontWeight = '700';
+            h.style.color = 'var(--light-red)';
+            h.style.marginBottom = '10px';
+            panel.appendChild(h);
+
+            const codeInput = document.createElement('input');
+            codeInput.type = 'text';
+            codeInput.readOnly = true;
+            codeInput.style.width = '100%';
+            codeInput.style.padding = '10px';
+            codeInput.style.background = 'var(--bg-dark)';
+            codeInput.style.border = '1px solid var(--border-color)';
+            codeInput.style.color = 'var(--text-light)';
+            codeInput.style.borderRadius = '6px';
+            codeInput.style.fontFamily = 'monospace';
+            codeInput.style.overflow = 'hidden';
+            codeInput.style.textOverflow = 'ellipsis';
+
+            const code = generateShareCode();
+            codeInput.value = code;
+            panel.appendChild(codeInput);
+
+            const row = document.createElement('div');
+            row.style.display = 'flex';
+            row.style.gap = '8px';
+            row.style.marginTop = '12px';
+            row.style.justifyContent = 'flex-end';
+
+            const copyBtn2 = document.createElement('button');
+            copyBtn2.textContent = 'Copiar';
+            copyBtn2.style.padding = '8px 12px';
+            copyBtn2.style.background = 'var(--primary-red)';
+            copyBtn2.style.border = 'none';
+            copyBtn2.style.color = 'white';
+            copyBtn2.style.borderRadius = '6px';
+            copyBtn2.style.cursor = 'pointer';
+            copyBtn2.addEventListener('click', async () => {
+                try {
+                    await navigator.clipboard.writeText(codeInput.value);
+                } catch (err) {
+                    const ta = document.createElement('textarea');
+                    ta.value = codeInput.value;
+                    document.body.appendChild(ta);
+                    ta.select();
+                    document.execCommand('copy');
+                    ta.remove();
+                }
+                copyBtn2.textContent = 'Copiado ✓';
+                setTimeout(() => { copyBtn2.textContent = 'Copiar'; }, 1500);
+            });
+
+            const closeBtn2 = document.createElement('button');
+            closeBtn2.textContent = 'Fechar';
+            closeBtn2.style.padding = '8px 12px';
+            closeBtn2.style.background = 'var(--border-color)';
+            closeBtn2.style.border = 'none';
+            closeBtn2.style.color = 'var(--text-light)';
+            closeBtn2.style.borderRadius = '6px';
+            closeBtn2.style.cursor = 'pointer';
+            closeBtn2.addEventListener('click', () => overlay.remove());
+
+            row.appendChild(closeBtn2);
+            row.appendChild(copyBtn2);
+            panel.appendChild(row);
+
+            overlay.appendChild(panel);
+            document.body.appendChild(overlay);
+        });
+
         leftPanel.appendChild(leftContent);
         leftFooter.appendChild(addBtn);
+        // place the share button under the add button
+        leftFooter.appendChild(shareConfigBtn);
         leftPanel.appendChild(leftFooter);
 
         mainArea.appendChild(leftPanel);
@@ -1881,15 +2315,89 @@
         }
     }
 
-    function openModal(editModeFlag = false) {
-        if (!modal) return;
-        editMode = editModeFlag;
+    function createEditModalIfNeeded() {
+        if (editModal && editContainer) return;
+        // build edit modal DOM
+        editModal = document.createElement('div');
+        editModal.id = 'dashboardConfigModal';
+        editModal.className = 'dashboard-modal';
 
-        // Show/hide footer BEFORE rendering content
-        const footer = document.getElementById('dashboard-edit-footer');
-        if (footer) {
-            footer.style.display = editMode ? 'flex' : 'none';
-        }
+        const frame = document.createElement('div');
+        frame.className = 'dashboard-frame';
+        frame.setAttribute('data-edit-mode', 'true');
+
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'dashboard-close';
+        closeBtn.id = 'dashboardConfigCloseBtn';
+        closeBtn.setAttribute('aria-label', 'Fechar');
+        closeBtn.textContent = '✕';
+
+        const content = document.createElement('div');
+        content.className = 'dashboard-content';
+        content.id = 'dashboardConfigContent';
+
+        frame.appendChild(closeBtn);
+        frame.appendChild(content);
+        editModal.appendChild(frame);
+        document.body.appendChild(editModal);
+
+        editContainer = content;
+
+        // footer with revert/save
+        const footer = document.createElement('div');
+        footer.id = 'dashboard-edit-footer';
+        footer.style.position = 'absolute';
+        footer.style.bottom = '0';
+        footer.style.left = '0';
+        footer.style.right = '0';
+        footer.style.height = '60px';
+        footer.style.display = 'none';
+        footer.style.background = 'rgba(0,0,0,0.7)';
+        footer.style.borderTop = '1px solid var(--border-color)';
+        footer.style.padding = '10px 20px';
+        footer.style.justifyContent = 'flex-end';
+        footer.style.gap = '10px';
+        footer.style.alignItems = 'center';
+
+        const revertBtn = document.createElement('button');
+        revertBtn.textContent = 'Reverter';
+        revertBtn.style.padding = '8px 16px';
+        revertBtn.style.background = 'var(--border-color)';
+        revertBtn.style.border = 'none';
+        revertBtn.style.color = 'var(--text-light)';
+        revertBtn.style.borderRadius = '4px';
+        revertBtn.style.cursor = 'pointer';
+        revertBtn.addEventListener('click', () => {
+            if (backupElements) {
+                elements = JSON.parse(JSON.stringify(backupElements));
+            }
+            closeModal();
+        });
+
+        const saveBtn = document.createElement('button');
+        saveBtn.textContent = 'Salvar';
+        saveBtn.style.padding = '8px 16px';
+        saveBtn.style.background = 'var(--primary-red)';
+        saveBtn.style.border = 'none';
+        saveBtn.style.color = 'white';
+        saveBtn.style.borderRadius = '4px';
+        saveBtn.style.cursor = 'pointer';
+        saveBtn.style.fontWeight = '600';
+        saveBtn.addEventListener('click', () => {
+            saveElements(elements);
+            closeModal();
+        });
+
+        footer.appendChild(revertBtn);
+        footer.appendChild(saveBtn);
+        frame.appendChild(footer);
+
+        // hook close
+        closeBtn.addEventListener('click', closeModal);
+    }
+
+    function openModal(editModeFlag = false) {
+        editMode = !!editModeFlag;
 
         // Hide controls-area when viewing dashboard (only in view mode)
         const controlsArea = document.querySelector('.controls-area');
@@ -1898,27 +2406,60 @@
         }
 
         if (editMode) {
+            // create separate edit modal if needed
+            createEditModalIfNeeded();
             backupElements = JSON.parse(JSON.stringify(elements));
+            container = editContainer;
+            modal = editModal;
+            // show footer
+            const footer = document.getElementById('dashboard-edit-footer');
+            if (footer) footer.style.display = 'flex';
             renderEditMode();
+            // mark frames
+            const viewFrame = viewModal && viewModal.querySelector('.dashboard-frame');
+            if (viewFrame) viewFrame.removeAttribute('data-edit-mode');
+            const editFrame = editModal && editModal.querySelector('.dashboard-frame');
+            if (editFrame) editFrame.setAttribute('data-edit-mode', 'true');
         } else {
+            // view mode
+            container = viewContainer;
+            modal = viewModal;
             renderViewMode();
+            // ensure edit modal footer hidden if exists
+            const footer = document.getElementById('dashboard-edit-footer');
+            if (footer) footer.style.display = 'none';
+            const viewFrame = viewModal && viewModal.querySelector('.dashboard-frame');
+            if (viewFrame) viewFrame.removeAttribute('data-edit-mode');
         }
 
-        modal.setAttribute('aria-hidden', 'false');
+        if (modal) {
+            modal.setAttribute('aria-hidden', 'false');
+            document.body.classList.add('dashboard-open');
+        }
+    }
+
+    // Presentation (view-only) modal functions - totally separate from edit modal
+    function openPresentationModal() {
+        if (!viewModal || !viewContainer) return;
+        // render into the view container (dashboardContent)
+        renderViewMode(viewContainer);
+        viewModal.setAttribute('aria-hidden', 'false');
         document.body.classList.add('dashboard-open');
+    }
+
+    function closePresentationModal() {
+        if (!viewModal) return;
+        viewModal.setAttribute('aria-hidden', 'true');
+        document.body.classList.remove('dashboard-open');
+        if (viewContainer) viewContainer.innerHTML = '';
+        Object.keys(blinkIntervals).forEach(id => stopBlinking(id));
     }
 
     function closeModal() {
         if (!modal) return;
-        editMode = false;
+        // hide active modal
         modal.setAttribute('aria-hidden', 'true');
         document.body.classList.remove('dashboard-open');
-
-        // Ensure footer is hidden on close
-        const footer = document.getElementById('dashboard-edit-footer');
-        if (footer) {
-            footer.style.display = 'none';
-        }
 
         // Restore controls-area visibility
         const controlsArea = document.querySelector('.controls-area');
@@ -1928,6 +2469,25 @@
 
         // Stop all blinks
         Object.keys(blinkIntervals).forEach(id => stopBlinking(id));
+
+        // if we are closing edit modal, remove it from DOM and restore view as active container
+        if (modal === editModal) {
+            editMode = false;
+            // remove edit modal from DOM
+            try {
+                if (editModal && editModal.parentNode) editModal.parentNode.removeChild(editModal);
+            } catch (err) {}
+            editModal = null;
+            editContainer = null;
+            // restore references to view modal
+            container = viewContainer;
+            modal = viewModal;
+        } else {
+            // closing view modal
+            editMode = false;
+            container = viewContainer;
+            modal = viewModal;
+        }
     }
 
     // Handle single vs double click vs long press (works on both mouse and touch)
@@ -2034,13 +2594,13 @@
 
             if (clickCount === 1) {
                 clickTimer = setTimeout(() => {
-                    // Single click - abre dashboard em view mode
-                    openModal(false);
+                    // Single click - open presentation modal (separate)
+                    openPresentationModal();
                     clickCount = 0;
                 }, 300);
             } else if (clickCount === 2) {
                 clearTimeout(clickTimer);
-                // Double click - abre dashboard em edit mode
+                // Double click - abre dashboard em edit mode (config)
                 openModal(true);
                 clickCount = 0;
             }
@@ -2078,57 +2638,13 @@
         btnClose.addEventListener('click', closeModal);
     }
 
-    // Create footer with Revert/Save (only visible in edit mode)
-    const dashboardFrame = document.querySelector('.dashboard-frame');
-    if (dashboardFrame) {
-        const footer = document.createElement('div');
-        footer.id = 'dashboard-edit-footer';
-        footer.style.position = 'absolute';
-        footer.style.bottom = '0';
-        footer.style.left = '0';
-        footer.style.right = '0';
-        footer.style.height = '60px';
-        footer.style.display = 'none';
-        footer.style.background = 'rgba(0,0,0,0.7)';
-        footer.style.borderTop = '1px solid var(--border-color)';
-        footer.style.padding = '10px 20px';
-        footer.style.justifyContent = 'flex-end';
-        footer.style.gap = '10px';
-        footer.style.alignItems = 'center';
-
-        const revertBtn = document.createElement('button');
-        revertBtn.textContent = 'Reverter';
-        revertBtn.style.padding = '8px 16px';
-        revertBtn.style.background = 'var(--border-color)';
-        revertBtn.style.border = 'none';
-        revertBtn.style.color = 'var(--text-light)';
-        revertBtn.style.borderRadius = '4px';
-        revertBtn.style.cursor = 'pointer';
-        revertBtn.addEventListener('click', () => {
-            if (backupElements) {
-                elements = JSON.parse(JSON.stringify(backupElements));
-            }
-            closeModal();
-        });
-
-        const saveBtn = document.createElement('button');
-        saveBtn.textContent = 'Salvar';
-        saveBtn.style.padding = '8px 16px';
-        saveBtn.style.background = 'var(--primary-red)';
-        saveBtn.style.border = 'none';
-        saveBtn.style.color = 'white';
-        saveBtn.style.borderRadius = '4px';
-        saveBtn.style.cursor = 'pointer';
-        saveBtn.style.fontWeight = '600';
-        saveBtn.addEventListener('click', () => {
-            saveElements(elements);
-            closeModal();
-        });
-
-        footer.appendChild(revertBtn);
-        footer.appendChild(saveBtn);
-        dashboardFrame.appendChild(footer);
+    // presentation modal close button (if exists)
+    const btnViewClose = document.getElementById('dashboardViewCloseBtn');
+    if (btnViewClose) {
+        btnViewClose.addEventListener('click', closePresentationModal);
     }
+
+    // Footer is created inside the edit modal by createEditModalIfNeeded().
 
     // expose API
     window.DashboardElements = {
@@ -2152,7 +2668,11 @@
         getAll: () => elements,
         getElement: (id) => elements.find(e => e.id === id),
         openModal,
-        closeModal
+        closeModal,
+        openPresentationModal,
+        closePresentationModal,
+        generateShareCode,
+        importShareCode
     };
 
     if (modal && modal.getAttribute('aria-hidden') === 'false') {

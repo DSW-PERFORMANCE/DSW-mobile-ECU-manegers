@@ -1040,13 +1040,91 @@
         container.style.height = '100%';
         
         elements.forEach(e => {
-            const el = createElement(e);
+            // Alimentar com dados do CommonInfo se fieldId estiver configurado
+            let elementWithData = e;
+            if (window.CommonInfo && window.CommonInfo.data && e.fieldId) {
+                const fieldData = window.CommonInfo.data[e.fieldId];
+                if (fieldData) {
+                    elementWithData = JSON.parse(JSON.stringify(e));
+                    elementWithData.value = fieldData.value !== undefined ? fieldData.value : e.value;
+                    if (!e.label) elementWithData.label = fieldData.title;
+                    if (!e.unit) elementWithData.unit = fieldData.unit;
+                }
+            }
+
+            const el = createElement(elementWithData);
             container.appendChild(el);
-            if (e.type === 'led' && e.blink && e.value >= e.threshold) {
-                startBlinking(el);
+            
+            // Para LED com condições, avaliar se deve piscar
+            if (e.type === 'led' && e.blink) {
+                let shouldBlink = false;
+                
+                // Se tem condição configurada
+                if (e.sourceElementId && e.conditionOperator && e.conditionThreshold !== undefined) {
+                    const sourceElement = elements.find(el => el.id === e.sourceElementId);
+                    if (sourceElement && window.CommonInfo && window.CommonInfo.data && sourceElement.fieldId) {
+                        const sourceFieldData = window.CommonInfo.data[sourceElement.fieldId];
+                        const sourceValue = sourceFieldData ? sourceFieldData.value : sourceElement.value;
+                        
+                        // Avaliar condição
+                        try {
+                            shouldBlink = eval(`${sourceValue} ${e.conditionOperator} ${e.conditionThreshold}`);
+                        } catch (err) {
+                            console.error('Erro ao avaliar condição LED:', err);
+                        }
+                    }
+                } else {
+                    // Sem condição, usar valor direto
+                    shouldBlink = elementWithData.value >= (e.threshold || 0);
+                }
+                
+                if (shouldBlink) {
+                    startBlinking(el);
+                }
             }
         });
     }
+
+    // Atualizar elementos quando CommonInfo mudar
+    function updateFromCommonInfo() {
+        if (!editMode) {
+            elements.forEach((e, idx) => {
+                if (e.fieldId && window.CommonInfo && window.CommonInfo.data) {
+                    const fieldData = window.CommonInfo.data[e.fieldId];
+                    if (fieldData && fieldData.value !== e.value) {
+                        const el = container.querySelector(`[data-id="${e.id}"]`);
+                        if (el) {
+                            // Atualizar valor do elemento
+                            let newValue = fieldData.value;
+                            
+                            // Se for LED com condição, calcular se deve piscar
+                            if (e.type === 'led' && e.blink && e.sourceElementId && e.conditionOperator) {
+                                const sourceElement = elements.find(el => el.id === e.sourceElementId);
+                                if (sourceElement && window.CommonInfo.data[sourceElement.fieldId]) {
+                                    const sourceValue = window.CommonInfo.data[sourceElement.fieldId].value;
+                                    try {
+                                        const shouldBlink = eval(`${sourceValue} ${e.conditionOperator} ${e.conditionThreshold}`);
+                                        if (shouldBlink) {
+                                            startBlinking(el);
+                                        } else {
+                                            stopBlinking(e.id);
+                                        }
+                                    } catch (err) {
+                                        console.error('Erro ao avaliar condição LED:', err);
+                                    }
+                                }
+                            }
+                            
+                            updateElement(el, newValue);
+                        }
+                    }
+                }
+            });
+        }
+    }
+
+    // Atualizar a cada 100ms
+    setInterval(updateFromCommonInfo, 100);
 
     function renderEditMode() {
         if (!container) return;
@@ -1095,7 +1173,43 @@
 
         // Add element previews with drag
         elements.forEach((e, idx) => {
-            const preview = document.createElement('div');
+            // Alimentar o elemento com valor real do CommonInfo se disponível
+            const elementCopy = JSON.parse(JSON.stringify(e)); // Deep copy
+            
+            if (window.CommonInfo && window.CommonInfo.data && elementCopy.fieldId) {
+                const fieldData = window.CommonInfo.data[elementCopy.fieldId];
+                if (fieldData) {
+                    elementCopy.value = fieldData.value || elementCopy.value;
+                    if (!elementCopy.label) elementCopy.label = fieldData.title;
+                    if (!elementCopy.unit) elementCopy.unit = fieldData.unit;
+                }
+            }
+
+            // Criar elemento REAL usando a mesma função que a dashboard usa
+            let realElement;
+            try {
+                if (elementCopy.type === 'gauge') {
+                    realElement = createGaugeElement(elementCopy);
+                } else if (elementCopy.type === 'bar') {
+                    realElement = createBarElement(elementCopy);
+                } else if (elementCopy.type === 'bar-marker') {
+                    realElement = createBarMarkerElement(elementCopy);
+                } else if (elementCopy.type === 'led') {
+                    realElement = createLedElement(elementCopy);
+                } else if (elementCopy.type === 'text') {
+                    realElement = createTextElement(elementCopy);
+                } else if (elementCopy.type === 'conditional-text') {
+                    realElement = createConditionalTextElement(elementCopy);
+                } else if (elementCopy.type === 'button') {
+                    realElement = createButtonElement(elementCopy);
+                }
+            } catch (err) {
+                console.error('Erro ao criar elemento preview:', err);
+            }
+
+            if (!realElement) return;
+
+            const preview = realElement;
             preview.className = 'dashboard-marker edit-draggable';
             preview.dataset.id = e.id;
             preview.dataset.idx = idx;
@@ -1108,127 +1222,7 @@
             preview.style.zIndex = '10';
 
             // Mini preview com tamanho proporcional
-            if (e.type === 'gauge') {
-                const scale = (e.sizeScale || 100) / 100;
-                const sizePx = 120 * scale;
-                preview.style.width = sizePx + 'px';
-                preview.style.height = (sizePx + 50) + 'px';
-                preview.style.background = e.color || 'var(--primary-red)';
-                preview.style.borderRadius = '50%';
-                preview.style.border = '2px solid white';
-                
-                // Adicionar label e unidade abaixo do gauge
-                const labelText = document.createElement('div');
-                labelText.style.position = 'absolute';
-                labelText.style.bottom = '0';
-                labelText.style.left = '50%';
-                labelText.style.transform = 'translateX(-50%)';
-                labelText.style.fontSize = '10px';
-                labelText.style.color = '#aaa';
-                labelText.style.whiteSpace = 'nowrap';
-                labelText.style.textAlign = 'center';
-                labelText.textContent = (e.label || '') + (e.unit ? ` (${e.unit})` : '');
-                if (e.label || e.unit) {
-                    preview.appendChild(labelText);
-                }
-            } else if (e.type === 'bar') {
-                const scale = (e.sizeScale || 100) / 100;
-                const widthPx = 120 * scale;
-                const heightPx = 30 * scale;
-                preview.style.width = widthPx + 'px';
-                preview.style.height = heightPx + 'px';
-                preview.style.background = e.color || 'var(--primary-red)';
-                preview.style.borderRadius = '12px';
-                preview.style.border = '2px solid white';
-                preview.style.display = 'flex';
-                preview.style.alignItems = 'center';
-                preview.style.justifyContent = 'center';
-                
-                // Mostrar label do bar
-                const barLabel = document.createElement('div');
-                barLabel.style.fontSize = '9px';
-                barLabel.style.color = 'white';
-                barLabel.style.fontWeight = '600';
-                barLabel.textContent = (e.label || 'Bar') + (e.unit ? ` ${e.unit}` : '');
-                preview.appendChild(barLabel);
-            } else if (e.type === 'bar-marker') {
-                const scale = (e.sizeScale || 100) / 100;
-                const widthPx = 150 * scale;
-                const heightPx = 35 * scale;
-                preview.style.width = widthPx + 'px';
-                preview.style.height = heightPx + 'px';
-                preview.style.background = e.color || 'var(--primary-red)';
-                preview.style.borderRadius = '8px';
-                preview.style.border = '2px solid white';
-                preview.style.display = 'flex';
-                preview.style.alignItems = 'center';
-                preview.style.justifyContent = 'center';
-                
-                // Mostrar label do bar-marker
-                const markerLabel = document.createElement('div');
-                markerLabel.style.fontSize = '9px';
-                markerLabel.style.color = 'white';
-                markerLabel.style.fontWeight = '600';
-                markerLabel.textContent = (e.label || 'Marker') + (e.unit ? ` ${e.unit}` : '');
-                preview.appendChild(markerLabel);
-            } else if (e.type === 'led') {
-                const scale = (e.sizeScale || 100) / 100;
-                const sizePx = 50 * scale;
-                preview.style.width = sizePx + 'px';
-                preview.style.height = sizePx + 'px';
-                preview.style.background = e.color || '#00FF00';
-                preview.style.borderRadius = '50%';
-                preview.style.border = '2px solid white';
-                preview.style.boxShadow = `0 0 15px ${e.color || '#00FF00'}`;
-            } else if (e.type === 'text') {
-                preview.style.width = 'auto';
-                preview.style.height = 'auto';
-                preview.style.padding = '6px 12px';
-                preview.style.background = 'rgba(255,255,255,0.1)';
-                preview.style.borderRadius = '4px';
-                preview.style.border = '1px solid white';
-                preview.style.color = e.color || 'var(--text-light)';
-                preview.style.fontSize = ((e.fontSize || 14) * 0.8) + 'px';
-                preview.textContent = (e.text || 'Texto').substring(0, 15);
-            } else if (e.type === 'conditional-text') {
-                preview.style.width = 'auto';
-                preview.style.height = 'auto';
-                preview.style.padding = '8px 12px';
-                preview.style.background = 'rgba(0,200,0,0.2)';
-                preview.style.borderRadius = '4px';
-                preview.style.border = '2px solid #00FF00';
-                preview.style.color = '#00FF00';
-                preview.style.fontSize = ((e.fontSize || 16) * 0.8) + 'px';
-                preview.style.fontWeight = '600';
-                preview.textContent = 'Condicional';
-            } else if (e.type === 'button') {
-                const scale = (e.sizeScale || 100) / 100;
-                preview.style.width = 'auto';
-                preview.style.height = 'auto';
-                preview.style.padding = (8 * scale) + 'px ' + (16 * scale) + 'px';
-                preview.style.background = e.color || 'var(--primary-red)';
-                preview.style.borderRadius = '6px';
-                preview.style.border = '2px solid white';
-                preview.style.color = 'white';
-                preview.style.fontSize = (12 * scale) + 'px';
-                preview.style.fontWeight = '600';
-                preview.textContent = e.label || 'Botão';
-            }
-
-            // Label
-            const label = document.createElement('div');
-            label.style.position = 'absolute';
-            label.style.bottom = '-22px';
-            label.style.left = '50%';
-            label.style.transform = 'translateX(-50%)';
-            label.style.color = 'var(--text-light)';
-            label.style.fontSize = '11px';
-            label.style.fontWeight = '600';
-            label.style.whiteSpace = 'nowrap';
-            label.textContent = e.label || e.id;
-            preview.appendChild(label);
-
-            // Drag logic
+            if (false && e.type === 'gauge') {
             let dragging = false;
             let start = { x: 0, y: 0 };
             let bounds = null;
@@ -1412,8 +1406,18 @@
                 { label: 'Tipo', key: 'type', type: 'select', options: ['gauge', 'bar', 'bar-marker', 'led', 'text', 'conditional-text', 'button'] },
                 { label: 'Cor', key: 'color', type: 'color' },
                 { label: 'Tamanho (%)', key: 'sizeScale', type: 'range', min: '25', max: '444', step: '5' },
-                { label: 'Ícone (Bootstrap)', key: 'icon', type: 'text', placeholder: 'Ex: speedometer, power, fuel-pump' }
+                { label: 'Ícone (Bootstrap)', key: 'icon', type: 'text', placeholder: 'Ex: speedometer, power, fuel-pump' },
+                { label: '📡 Campo de Dados', key: 'fieldId', type: 'select', options: [], placeholder: 'Selecione um campo (opcional)' }
             ];
+
+            // Populer opções de fieldId do CommonInfo
+            if (window.CommonInfo && window.CommonInfo.config && window.CommonInfo.config.dataFields) {
+                const fieldOptions = window.CommonInfo.config.dataFields.map(f => ({
+                    value: f.id,
+                    label: `${f.title} (${f.id})`
+                }));
+                commonFields[5].options = fieldOptions; // fieldId é o 6º campo (index 5)
+            }
 
             const gaugeBarFields = [
                 { label: 'Mín', key: 'min', type: 'number' },
@@ -1686,6 +1690,136 @@
                     leftContent.appendChild(iconPickerContainer);
                 }
             });
+
+            // ===== SEÇÃO DE CONDIÇÕES PARA LED =====
+            if (e.type === 'led') {
+                const conditionSection = document.createElement('div');
+                conditionSection.style.padding = '15px';
+                conditionSection.style.background = 'rgba(0,150,200,0.1)';
+                conditionSection.style.borderRadius = '6px';
+                conditionSection.style.marginBottom = '15px';
+                conditionSection.style.border = '1px solid rgba(0,150,200,0.3)';
+
+                const condTitle = document.createElement('div');
+                condTitle.style.fontSize = '13px';
+                condTitle.style.fontWeight = '600';
+                condTitle.style.color = 'var(--light-red)';
+                condTitle.style.marginBottom = '12px';
+                condTitle.textContent = '⚡ Condição para Acender';
+
+                conditionSection.appendChild(condTitle);
+
+                // Source: Gauge ou outro elemento
+                const sourceLabel = document.createElement('label');
+                sourceLabel.style.color = 'var(--text-light)';
+                sourceLabel.style.fontSize = '12px';
+                sourceLabel.style.fontWeight = '600';
+                sourceLabel.style.display = 'block';
+                sourceLabel.style.marginBottom = '6px';
+                sourceLabel.textContent = 'Fonte (Elemento):';
+                conditionSection.appendChild(sourceLabel);
+
+                const sourceSelect = document.createElement('select');
+                sourceSelect.style.width = '100%';
+                sourceSelect.style.padding = '6px 8px';
+                sourceSelect.style.background = 'var(--bg-dark)';
+                sourceSelect.style.border = '1px solid var(--border-color)';
+                sourceSelect.style.color = 'var(--text-light)';
+                sourceSelect.style.borderRadius = '4px';
+                sourceSelect.style.marginBottom = '12px';
+
+                const noneOption = document.createElement('option');
+                noneOption.value = '';
+                noneOption.textContent = '--- Nenhuma (usar valor direto) ---';
+                sourceSelect.appendChild(noneOption);
+
+                // Adicionar opções de elementos (apenas gauge e bar)
+                elements.forEach((elem, i) => {
+                    if ((elem.type === 'gauge' || elem.type === 'bar' || elem.type === 'bar-marker') && i !== idx) {
+                        const opt = document.createElement('option');
+                        opt.value = elem.id;
+                        opt.textContent = `${elem.label || elem.id} (${elem.type})`;
+                        opt.selected = e.sourceElementId === elem.id;
+                        sourceSelect.appendChild(opt);
+                    }
+                });
+
+                sourceSelect.addEventListener('change', () => {
+                    elements[idx].sourceElementId = sourceSelect.value || null;
+                });
+
+                conditionSection.appendChild(sourceSelect);
+
+                // Operador
+                const opLabel = document.createElement('label');
+                opLabel.style.color = 'var(--text-light)';
+                opLabel.style.fontSize = '12px';
+                opLabel.style.fontWeight = '600';
+                opLabel.style.display = 'block';
+                opLabel.style.marginBottom = '6px';
+                opLabel.textContent = 'Operador:';
+                conditionSection.appendChild(opLabel);
+
+                const opSelect = document.createElement('select');
+                opSelect.style.width = '100%';
+                opSelect.style.padding = '6px 8px';
+                opSelect.style.background = 'var(--bg-dark)';
+                opSelect.style.border = '1px solid var(--border-color)';
+                opSelect.style.color = 'var(--text-light)';
+                opSelect.style.borderRadius = '4px';
+                opSelect.style.marginBottom = '12px';
+
+                const operators = [
+                    { value: '>=', label: 'Maior ou igual (≥)' },
+                    { value: '>', label: 'Maior (>)' },
+                    { value: '<=', label: 'Menor ou igual (≤)' },
+                    { value: '<', label: 'Menor (<)' },
+                    { value: '==', label: 'Igual (=)' },
+                    { value: '!=', label: 'Diferente (≠)' }
+                ];
+
+                operators.forEach(op => {
+                    const opt = document.createElement('option');
+                    opt.value = op.value;
+                    opt.textContent = op.label;
+                    opt.selected = e.conditionOperator === op.value;
+                    opSelect.appendChild(opt);
+                });
+
+                opSelect.addEventListener('change', () => {
+                    elements[idx].conditionOperator = opSelect.value;
+                });
+
+                conditionSection.appendChild(opSelect);
+
+                // Valor limite
+                const thresholdLabel = document.createElement('label');
+                thresholdLabel.style.color = 'var(--text-light)';
+                thresholdLabel.style.fontSize = '12px';
+                thresholdLabel.style.fontWeight = '600';
+                thresholdLabel.style.display = 'block';
+                thresholdLabel.style.marginBottom = '6px';
+                thresholdLabel.textContent = 'Valor Limite:';
+                conditionSection.appendChild(thresholdLabel);
+
+                const thresholdInput = document.createElement('input');
+                thresholdInput.type = 'number';
+                thresholdInput.style.width = '100%';
+                thresholdInput.style.padding = '6px 8px';
+                thresholdInput.style.background = 'var(--bg-dark)';
+                thresholdInput.style.border = '1px solid var(--border-color)';
+                thresholdInput.style.color = 'var(--text-light)';
+                thresholdInput.style.borderRadius = '4px';
+                thresholdInput.value = e.conditionThreshold || 0;
+
+                thresholdInput.addEventListener('change', () => {
+                    elements[idx].conditionThreshold = parseFloat(thresholdInput.value);
+                });
+
+                conditionSection.appendChild(thresholdInput);
+
+                leftContent.appendChild(conditionSection);
+            }
         };
 
         // Add new element button
