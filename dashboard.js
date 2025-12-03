@@ -1302,46 +1302,13 @@
         shareTitle.textContent = 'Compartilhar / Importar Configuração';
         shareSection.appendChild(shareTitle);
 
-        // shareRow removed: use the 'Gerar & Copiar Configuração' button under '+ Novo Elemento' instead
-
-        const importRow = document.createElement('div');
-        importRow.style.display = 'flex';
-        importRow.style.gap = '8px';
-        importRow.style.marginTop = '10px';
-
-        const importInput = document.createElement('input');
-        importInput.type = 'text';
-        importInput.placeholder = 'Cole o código aqui para importar...';
-        importInput.style.flex = '1';
-        importInput.style.padding = '8px';
-        importInput.style.background = 'var(--bg-dark)';
-        importInput.style.border = '1px solid var(--border-color)';
-        importInput.style.color = 'var(--text-light)';
-        importInput.style.borderRadius = '4px';
-        importRow.appendChild(importInput);
-
-        const importBtn = document.createElement('button');
-        importBtn.textContent = 'Importar';
-        importBtn.style.padding = '8px 12px';
-        importBtn.style.background = 'var(--border-color)';
-        importBtn.style.border = 'none';
-        importBtn.style.color = 'var(--text-light)';
-        importBtn.style.borderRadius = '4px';
-        importBtn.style.cursor = 'pointer';
-        importBtn.addEventListener('click', () => {
-            const code = importInput.value.trim();
-            if (!code) return;
-            const res = importShareCode(code);
-            if (res.ok) {
-                // re-render edit mode to reflect imported elements
-                renderEditMode();
-            } else {
-                alert('Código inválido: ' + (res.error || 'erro desconhecido'));
-            }
-        });
-        importRow.appendChild(importBtn);
-
-        shareSection.appendChild(importRow);
+        // Use os botões 'Gerar & Copiar' e 'Carregar Configuração' no rodapé para exportar/importar
+        const shareHint = document.createElement('div');
+        shareHint.style.fontSize = '12px';
+        shareHint.style.color = 'var(--text-light)';
+        shareHint.style.marginTop = '6px';
+        shareHint.textContent = "Use 'Gerar & Copiar' e 'Carregar Configuração' no rodapé para exportar/importar o painel.";
+        shareSection.appendChild(shareHint);
 
         leftContent.appendChild(shareSection);
 
@@ -2186,123 +2153,8 @@
             leftContent.appendChild(tmpPanel);
         });
 
-        // Add Generate & Copy button (opens small modal) under the New Element button area
-        const shareConfigBtn = document.createElement('button');
-        shareConfigBtn.textContent = 'Gerar & Copiar Configuração';
-        shareConfigBtn.style.width = '100%';
-        shareConfigBtn.style.marginTop = '10px';
-        shareConfigBtn.style.padding = '10px 16px';
-        shareConfigBtn.style.background = 'linear-gradient(135deg, #333 0%, #222 100%)';
-        shareConfigBtn.style.border = '1px solid var(--border-color)';
-        shareConfigBtn.style.color = 'var(--text-light)';
-        shareConfigBtn.style.borderRadius = '6px';
-        shareConfigBtn.style.cursor = 'pointer';
-
-        shareConfigBtn.addEventListener('click', () => {
-            // create a small modal showing the one-line code
-            const modalId = 'dsw-share-modal';
-            let existing = document.getElementById(modalId);
-            if (existing) {
-                existing.remove();
-            }
-
-            const overlay = document.createElement('div');
-            overlay.id = modalId;
-            overlay.style.position = 'fixed';
-            overlay.style.left = '0';
-            overlay.style.top = '0';
-            overlay.style.right = '0';
-            overlay.style.bottom = '0';
-            overlay.style.display = 'flex';
-            overlay.style.alignItems = 'center';
-            overlay.style.justifyContent = 'center';
-            overlay.style.background = 'rgba(0,0,0,0.6)';
-            overlay.style.zIndex = '20000';
-
-            const panel = document.createElement('div');
-            panel.style.width = 'min(880px, 92%)';
-            panel.style.maxWidth = '920px';
-            panel.style.background = 'var(--bg-darker)';
-            panel.style.border = '1px solid var(--border-color)';
-            panel.style.borderRadius = '10px';
-            panel.style.padding = '18px';
-            panel.style.boxShadow = '0 8px 36px rgba(0,0,0,0.6)';
-
-            const h = document.createElement('div');
-            h.textContent = 'Código único (uma linha)';
-            h.style.fontWeight = '700';
-            h.style.color = 'var(--light-red)';
-            h.style.marginBottom = '10px';
-            panel.appendChild(h);
-
-            const codeInput = document.createElement('input');
-            codeInput.type = 'text';
-            codeInput.readOnly = true;
-            codeInput.style.width = '100%';
-            codeInput.style.padding = '10px';
-            codeInput.style.background = 'var(--bg-dark)';
-            codeInput.style.border = '1px solid var(--border-color)';
-            codeInput.style.color = 'var(--text-light)';
-            codeInput.style.borderRadius = '6px';
-            codeInput.style.fontFamily = 'monospace';
-            codeInput.style.overflow = 'hidden';
-            codeInput.style.textOverflow = 'ellipsis';
-
-            const code = generateShareCode();
-            codeInput.value = code;
-            panel.appendChild(codeInput);
-
-            const row = document.createElement('div');
-            row.style.display = 'flex';
-            row.style.gap = '8px';
-            row.style.marginTop = '12px';
-            row.style.justifyContent = 'flex-end';
-
-            const copyBtn2 = document.createElement('button');
-            copyBtn2.textContent = 'Copiar';
-            copyBtn2.style.padding = '8px 12px';
-            copyBtn2.style.background = 'var(--primary-red)';
-            copyBtn2.style.border = 'none';
-            copyBtn2.style.color = 'white';
-            copyBtn2.style.borderRadius = '6px';
-            copyBtn2.style.cursor = 'pointer';
-            copyBtn2.addEventListener('click', async () => {
-                try {
-                    await navigator.clipboard.writeText(codeInput.value);
-                } catch (err) {
-                    const ta = document.createElement('textarea');
-                    ta.value = codeInput.value;
-                    document.body.appendChild(ta);
-                    ta.select();
-                    document.execCommand('copy');
-                    ta.remove();
-                }
-                copyBtn2.textContent = 'Copiado ✓';
-                setTimeout(() => { copyBtn2.textContent = 'Copiar'; }, 1500);
-            });
-
-            const closeBtn2 = document.createElement('button');
-            closeBtn2.textContent = 'Fechar';
-            closeBtn2.style.padding = '8px 12px';
-            closeBtn2.style.background = 'var(--border-color)';
-            closeBtn2.style.border = 'none';
-            closeBtn2.style.color = 'var(--text-light)';
-            closeBtn2.style.borderRadius = '6px';
-            closeBtn2.style.cursor = 'pointer';
-            closeBtn2.addEventListener('click', () => overlay.remove());
-
-            row.appendChild(closeBtn2);
-            row.appendChild(copyBtn2);
-            panel.appendChild(row);
-
-            overlay.appendChild(panel);
-            document.body.appendChild(overlay);
-        });
-
         leftPanel.appendChild(leftContent);
         leftFooter.appendChild(addBtn);
-        // place the share button under the add button
-        leftFooter.appendChild(shareConfigBtn);
         leftPanel.appendChild(leftFooter);
 
         mainArea.appendChild(leftPanel);
@@ -2374,6 +2226,212 @@
             closeModal();
         });
 
+        const genBtn = document.createElement('button');
+        genBtn.textContent = 'Gerar & Copiar';
+        genBtn.style.padding = '8px 14px';
+        genBtn.style.background = 'linear-gradient(90deg, #444, #222)';
+        genBtn.style.border = '1px solid var(--border-color)';
+        genBtn.style.color = 'var(--text-light)';
+        genBtn.style.borderRadius = '4px';
+        genBtn.style.cursor = 'pointer';
+        genBtn.addEventListener('click', () => {
+            const modalId = 'dsw-share-modal-footer';
+            let existing = document.getElementById(modalId);
+            if (existing) existing.remove();
+
+            const overlay = document.createElement('div');
+            overlay.id = modalId;
+            overlay.style.position = 'fixed';
+            overlay.style.left = '0';
+            overlay.style.top = '0';
+            overlay.style.right = '0';
+            overlay.style.bottom = '0';
+            overlay.style.display = 'flex';
+            overlay.style.alignItems = 'center';
+            overlay.style.justifyContent = 'center';
+            overlay.style.background = 'rgba(0,0,0,0.6)';
+            overlay.style.zIndex = '20000';
+
+            const panel = document.createElement('div');
+            panel.style.width = 'min(880px, 92%)';
+            panel.style.maxWidth = '920px';
+            panel.style.background = 'var(--bg-darker)';
+            panel.style.border = '1px solid var(--border-color)';
+            panel.style.borderRadius = '10px';
+            panel.style.padding = '18px';
+            panel.style.boxShadow = '0 8px 36px rgba(0,0,0,0.6)';
+
+            const h = document.createElement('div');
+            h.textContent = 'Código único (uma linha)';
+            h.style.fontWeight = '700';
+            h.style.color = 'var(--light-red)';
+            h.style.marginBottom = '10px';
+            panel.appendChild(h);
+
+            const codeInput = document.createElement('input');
+            codeInput.type = 'text';
+            codeInput.readOnly = true;
+            codeInput.style.width = '100%';
+            codeInput.style.padding = '10px';
+            codeInput.style.background = 'var(--bg-dark)';
+            codeInput.style.border = '1px solid var(--border-color)';
+            codeInput.style.color = 'var(--text-light)';
+            codeInput.style.borderRadius = '6px';
+            codeInput.style.fontFamily = 'monospace';
+            codeInput.style.overflow = 'hidden';
+            codeInput.style.textOverflow = 'ellipsis';
+
+            const code = generateShareCode();
+            codeInput.value = code;
+            panel.appendChild(codeInput);
+
+            const info = document.createElement('div');
+            info.style.fontSize = '12px';
+            info.style.color = 'var(--text-light)';
+            info.style.marginTop = '8px';
+            info.textContent = 'Após copiar, compartilhe este código com um amigo para que ele tenha exatamente o mesmo painel.';
+            panel.appendChild(info);
+
+            const row = document.createElement('div');
+            row.style.display = 'flex';
+            row.style.gap = '8px';
+            row.style.marginTop = '12px';
+            row.style.justifyContent = 'flex-end';
+
+            const copyBtn2 = document.createElement('button');
+            copyBtn2.textContent = 'Copiar';
+            copyBtn2.style.padding = '8px 12px';
+            copyBtn2.style.background = 'var(--primary-red)';
+            copyBtn2.style.border = 'none';
+            copyBtn2.style.color = 'white';
+            copyBtn2.style.borderRadius = '6px';
+            copyBtn2.style.cursor = 'pointer';
+            copyBtn2.addEventListener('click', async () => {
+                try { await navigator.clipboard.writeText(codeInput.value); } catch (err) {
+                    const ta = document.createElement('textarea'); ta.value = codeInput.value; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+                }
+                copyBtn2.textContent = 'Copiado ✓';
+                setTimeout(() => { copyBtn2.textContent = 'Copiar'; }, 1500);
+            });
+
+            const closeBtn2 = document.createElement('button');
+            closeBtn2.textContent = 'Fechar';
+            closeBtn2.style.padding = '8px 12px';
+            closeBtn2.style.background = 'var(--border-color)';
+            closeBtn2.style.border = 'none';
+            closeBtn2.style.color = 'var(--text-light)';
+            closeBtn2.style.borderRadius = '6px';
+            closeBtn2.style.cursor = 'pointer';
+            closeBtn2.addEventListener('click', () => overlay.remove());
+
+            row.appendChild(closeBtn2);
+            row.appendChild(copyBtn2);
+            panel.appendChild(row);
+
+            overlay.appendChild(panel);
+            document.body.appendChild(overlay);
+        });
+
+        const loadBtn = document.createElement('button');
+        loadBtn.textContent = 'Carregar Configuração';
+        loadBtn.style.padding = '8px 14px';
+        loadBtn.style.background = 'var(--border-color)';
+        loadBtn.style.border = '1px solid var(--border-color)';
+        loadBtn.style.color = 'var(--text-light)';
+        loadBtn.style.borderRadius = '4px';
+        loadBtn.style.cursor = 'pointer';
+        loadBtn.addEventListener('click', () => {
+            const modalId = 'dsw-load-modal-footer';
+            let existing = document.getElementById(modalId);
+            if (existing) existing.remove();
+
+            const overlay = document.createElement('div');
+            overlay.id = modalId;
+            overlay.style.position = 'fixed';
+            overlay.style.left = '0';
+            overlay.style.top = '0';
+            overlay.style.right = '0';
+            overlay.style.bottom = '0';
+            overlay.style.display = 'flex';
+            overlay.style.alignItems = 'center';
+            overlay.style.justifyContent = 'center';
+            overlay.style.background = 'rgba(0,0,0,0.6)';
+            overlay.style.zIndex = '20000';
+
+            const panel = document.createElement('div');
+            panel.style.width = 'min(880px, 92%)';
+            panel.style.maxWidth = '920px';
+            panel.style.background = 'var(--bg-darker)';
+            panel.style.border = '1px solid var(--border-color)';
+            panel.style.borderRadius = '10px';
+            panel.style.padding = '18px';
+            panel.style.boxShadow = '0 8px 36px rgba(0,0,0,0.6)';
+
+            const h = document.createElement('div');
+            h.textContent = 'Carregar configuração (cole o código abaixo)';
+            h.style.fontWeight = '700';
+            h.style.color = 'var(--light-red)';
+            h.style.marginBottom = '10px';
+            panel.appendChild(h);
+
+            const ta = document.createElement('textarea');
+            ta.style.width = '100%';
+            ta.style.minHeight = '120px';
+            ta.style.padding = '10px';
+            ta.style.background = 'var(--bg-dark)';
+            ta.style.border = '1px solid var(--border-color)';
+            ta.style.color = 'var(--text-light)';
+            ta.style.borderRadius = '6px';
+            ta.placeholder = 'Cole aqui o código gerado (ex: DSWCFG1:...) ou JSON...';
+            panel.appendChild(ta);
+
+            const row = document.createElement('div');
+            row.style.display = 'flex';
+            row.style.gap = '8px';
+            row.style.marginTop = '12px';
+            row.style.justifyContent = 'flex-end';
+
+            const importBtn = document.createElement('button');
+            importBtn.textContent = 'Importar';
+            importBtn.style.padding = '8px 12px';
+            importBtn.style.background = 'var(--primary-red)';
+            importBtn.style.border = 'none';
+            importBtn.style.color = 'white';
+            importBtn.style.borderRadius = '6px';
+            importBtn.style.cursor = 'pointer';
+            importBtn.addEventListener('click', () => {
+                const code = ta.value.trim();
+                if (!code) return alert('Cole o código antes de importar');
+                const res = importShareCode(code);
+                if (res.ok) {
+                    saveElements(elements);
+                    // re-render the edit modal content if open
+                    renderEditMode();
+                    overlay.remove();
+                    alert('Configuração importada com sucesso');
+                } else {
+                    alert('Falha ao importar: ' + (res.error || 'erro desconhecido'));
+                }
+            });
+
+            const cancelBtn = document.createElement('button');
+            cancelBtn.textContent = 'Cancelar';
+            cancelBtn.style.padding = '8px 12px';
+            cancelBtn.style.background = 'var(--border-color)';
+            cancelBtn.style.border = 'none';
+            cancelBtn.style.color = 'var(--text-light)';
+            cancelBtn.style.borderRadius = '6px';
+            cancelBtn.style.cursor = 'pointer';
+            cancelBtn.addEventListener('click', () => overlay.remove());
+
+            row.appendChild(cancelBtn);
+            row.appendChild(importBtn);
+            panel.appendChild(row);
+
+            overlay.appendChild(panel);
+            document.body.appendChild(overlay);
+        });
+
         const saveBtn = document.createElement('button');
         saveBtn.textContent = 'Salvar';
         saveBtn.style.padding = '8px 16px';
@@ -2389,6 +2447,8 @@
         });
 
         footer.appendChild(revertBtn);
+        footer.appendChild(genBtn);
+        footer.appendChild(loadBtn);
         footer.appendChild(saveBtn);
         frame.appendChild(footer);
 
