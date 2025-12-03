@@ -484,6 +484,115 @@
       ]
     }
   ],
+  "ecuInfo": {
+    "model": "DS 300",
+    "description": "Gerenciador de Motor ECU - Versão 2.0",
+    "commonDiagnosticsCommand": "software/getcominfo",
+    "commonDiagnosticsFrequency": 500,
+    "enabled": true,
+    "dataFields": [
+      {
+        "id": "rpm",
+        "title": "RPM",
+        "type": "number",
+        "unit": "RPM",
+        "format": "0",
+        "position": 0,
+        "min": 0,
+        "max": 12000
+      },
+      {
+        "id": "tps",
+        "title": "Posição do Acelerador",
+        "type": "number",
+        "unit": "%",
+        "format": "0.0",
+        "position": 1,
+        "min": 0,
+        "max": 100
+      },
+      {
+        "id": "coolant_temp",
+        "title": "Temperatura do Coolant",
+        "type": "number",
+        "unit": "°C",
+        "format": "0",
+        "position": 2,
+        "min": -40,
+        "max": 150
+      },
+      {
+        "id": "air_temp",
+        "title": "Temperatura do Ar",
+        "type": "number",
+        "unit": "°C",
+        "format": "0",
+        "position": 3,
+        "min": -40,
+        "max": 100
+      },
+      {
+        "id": "map_pressure",
+        "title": "Pressão do Manifold",
+        "type": "number",
+        "unit": "kPa",
+        "format": "0.0",
+        "position": 4,
+        "min": 0,
+        "max": 300
+      },
+      {
+        "id": "battery_voltage",
+        "title": "Voltagem da Bateria",
+        "type": "number",
+        "unit": "V",
+        "format": "0.0",
+        "position": 5,
+        "min": 8,
+        "max": 18
+      },
+      {
+        "id": "injection_duty",
+        "title": "Duty Cycle Injeção",
+        "type": "number",
+        "unit": "%",
+        "format": "0.0",
+        "position": 6,
+        "min": 0,
+        "max": 100
+      },
+      {
+        "id": "ignition_advance",
+        "title": "Avanço de Ignição",
+        "type": "number",
+        "unit": "°",
+        "format": "0.0",
+        "position": 7,
+        "min": -30,
+        "max": 60
+      },
+      {
+        "id": "fuel_pressure",
+        "title": "Pressão do Combustível",
+        "type": "number",
+        "unit": "bar",
+        "format": "0.00",
+        "position": 8,
+        "min": 0,
+        "max": 10
+      },
+      {
+        "id": "lambda",
+        "title": "Lambda (O2)",
+        "type": "number",
+        "unit": "λ",
+        "format": "0.00",
+        "position": 9,
+        "min": 0.5,
+        "max": 1.5
+      }
+    ]
+  },
   "dashboardButtons": [
     {
       "id": "btn_motor_test",

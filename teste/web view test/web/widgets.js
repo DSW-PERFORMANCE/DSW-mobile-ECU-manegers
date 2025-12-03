@@ -1289,13 +1289,47 @@ class WidgetManager {
                 const xVals = points.map(p => p.x.toFixed(2)).join(',');
                 const yVals = points.map(p => p.y.toFixed(2)).join(',');
 
-                if (commandX) onValueChange(commandX, xVals);
-                else onValueChange(commandY, points.map(p => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(','));
+                if (commandX) {
+                    if (window.communicationBridge) {
+                        window.communicationBridge.execute(commandX, xVals).catch(err => {
+                            console.error('Communication Bridge error:', err);
+                            onValueChange(commandX, xVals);
+                        });
+                    } else {
+                        onValueChange(commandX, xVals);
+                    }
+                } else {
+                    const xyData = points.map(p => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(',');
+                    if (window.communicationBridge) {
+                        window.communicationBridge.execute(commandY, xyData).catch(err => {
+                            console.error('Communication Bridge error:', err);
+                            onValueChange(commandY, xyData);
+                        });
+                    } else {
+                        onValueChange(commandY, xyData);
+                    }
+                }
 
-                if (commandY && commandX) onValueChange(commandY, yVals);
+                if (commandY && commandX) {
+                    if (window.communicationBridge) {
+                        window.communicationBridge.execute(commandY, yVals).catch(err => {
+                            console.error('Communication Bridge error:', err);
+                            onValueChange(commandY, yVals);
+                        });
+                    } else {
+                        onValueChange(commandY, yVals);
+                    }
+                }
             } else {
                 const yVals = points.map(p => p.y.toFixed(2)).join(',');
-                onValueChange(commandY, yVals);
+                if (window.communicationBridge) {
+                    window.communicationBridge.execute(commandY, yVals).catch(err => {
+                        console.error('Communication Bridge error:', err);
+                        onValueChange(commandY, yVals);
+                    });
+                } else {
+                    onValueChange(commandY, yVals);
+                }
             }
         };
 
