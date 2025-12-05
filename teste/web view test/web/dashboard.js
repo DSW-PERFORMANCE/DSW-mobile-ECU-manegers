@@ -7,10 +7,14 @@
 */
 (function () {
     const STORAGE_KEY = 'dsw_dashboard_elements_v1';
-    const container = document.getElementById('dashboardContent');
-    const modal = document.getElementById('dashboardModal');
+    const viewContainer = document.getElementById('dashboardContent');
+    const viewModal = document.getElementById('dashboardModal');
+    let container = viewContainer;
+    let modal = viewModal;
     const btnOpen = document.getElementById('dashboardBtn');
     const btnClose = document.getElementById('dashboardCloseBtn');
+    let editModal = null;
+    let editContainer = null;
 
     if (!container || !modal || !btnOpen || !btnClose) {
         console.warn('Dashboard elements missing in DOM.');
@@ -96,6 +100,57 @@
 
     elements = loadElements();
 
+    function clampPercent(val) {
+        const n = parseFloat(val);
+        if (isNaN(n)) return 50;
+        return Math.min(98, Math.max(2, n));
+    }
+
+    // Share code helpers: encode current elements to single-line string and decode back
+    const SHARE_PREFIX = 'DSWCFG1:';
+
+    function generateShareCode() {
+        try {
+            const json = JSON.stringify(elements);
+            const base = btoa(encodeURIComponent(json));
+            return SHARE_PREFIX + base;
+        } catch (err) {
+            console.error('Erro ao gerar código de compartilhamento', err);
+            return '';
+        }
+    }
+
+    function importShareCode(code) {
+        try {
+            if (!code || typeof code !== 'string') throw new Error('Código inválido');
+            // accept prefixed code or raw base64
+            let payload = code.trim();
+            if (payload.startsWith(SHARE_PREFIX)) payload = payload.slice(SHARE_PREFIX.length);
+
+            // Try decode
+            let json = null;
+            try {
+                json = decodeURIComponent(atob(payload));
+            } catch (err) {
+                // fallback: maybe it was plain ascii JSON
+                try {
+                    json = atob(payload);
+                } catch (err2) {
+                    // last resort: assume payload is raw JSON
+                    json = payload;
+                }
+            }
+
+            const parsed = JSON.parse(json);
+            if (!Array.isArray(parsed)) throw new Error('Formato inválido');
+            elements = parsed;
+            saveElements(elements);
+            return { ok: true };
+        } catch (err) {
+            console.error('Erro ao importar código:', err);
+            return { ok: false, error: err.message || String(err) };
+        }
+    }
     // Aguardar carregamento da configuração do ecu-manager
     setTimeout(() => {
         loadDashboardButtonsConfig();
@@ -117,6 +172,7 @@
         
         // Aplicar rotação ao gauge inteiro
         if (e.gaugeRotation && e.gaugeRotation !== 0) {
+            wrapper.style.transformOrigin = '50% 50%';
             wrapper.style.transform = `translate(-50%, -50%) rotate(${e.gaugeRotation}deg)`;
         }
 
@@ -196,6 +252,30 @@
             dangerZonePath.setAttribute('opacity', '0.7');
             dangerZonePath.style.filter = `drop-shadow(0 0 4px ${e.dangerZone.color || 'rgba(255, 68, 68, 0.8)'})`;
             svg.appendChild(dangerZonePath);
+            // keep reference so preview can update dynamically
+            wrapper._dangerPath = dangerZonePath;
+        }
+
+        // zona de warning (faixa amarela) opcional
+        if (e.warningZone) {
+            const warningStart = ((e.warningZone.start - e.min) / (e.max - e.min)) * 270 - 135;
+            const warningEnd = ((e.warningZone.end - e.min) / (e.max - e.min)) * 270 - 135;
+            const warningRadius = radius - 6;
+            const warnStartX = center + warningRadius * Math.cos(warningStart * Math.PI / 180);
+            const warnStartY = center + warningRadius * Math.sin(warningStart * Math.PI / 180);
+            const warnEndX = center + warningRadius * Math.cos(warningEnd * Math.PI / 180);
+            const warnEndY = center + warningRadius * Math.sin(warningEnd * Math.PI / 180);
+            const warnArc = Math.abs(warningEnd - warningStart) > 180 ? 1 : 0;
+
+            const warningPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            warningPath.setAttribute('d', `M ${warnStartX} ${warnStartY} A ${warningRadius} ${warningRadius} 0 ${warnArc} 1 ${warnEndX} ${warnEndY}`);
+            warningPath.setAttribute('stroke', e.warningZone.color || '#FFD54F');
+            warningPath.setAttribute('stroke-width', '3');
+            warningPath.setAttribute('fill', 'none');
+            warningPath.setAttribute('opacity', '0.6');
+            warningPath.style.filter = `drop-shadow(0 0 3px ${e.warningZone.color || 'rgba(255, 213, 79, 0.8)'})`;
+            svg.appendChild(warningPath);
+            wrapper._warningPath = warningPath;
         }
 
         for (let i = 0; i <= 10; i++) {
@@ -241,6 +321,7 @@
             const divisor = e.valueDivisor || 1;
             let labelVal = e.min + (e.max - e.min) * (i / 10);
             labelVal = labelVal / divisor;
+            
             const labelAngle = angle + 6;
             const labelRad = labelAngle * (Math.PI / 180);
             const lx = center + (radius - 22) * Math.cos(labelRad);
@@ -263,6 +344,25 @@
         const needleRotation = ((e.value - e.min) / (e.max - e.min)) * 270 - 135;
         needle.setAttribute('transform', `rotate(${needleRotation} ${center} ${center})`);
         needle.style.transition = 'transform 0.3s ease';
+
+        // Rastro (trail) da agulha - arco suave
+        const trail = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        const startAngle = -135;
+        const endAngle = needleRotation;
+        const trailRadius = radius - 5;
+        const trailStartX = center + trailRadius * Math.cos(startAngle * Math.PI / 180);
+        const trailStartY = center + trailRadius * Math.sin(startAngle * Math.PI / 180);
+        const trailEndX = center + trailRadius * Math.cos(endAngle * Math.PI / 180);
+        const trailEndY = center + trailRadius * Math.sin(endAngle * Math.PI / 180);
+        const largeArc = Math.abs(endAngle - startAngle) > 180 ? 1 : 0;
+        trail.setAttribute('d', `M ${trailStartX} ${trailStartY} A ${trailRadius} ${trailRadius} 0 ${largeArc} 1 ${trailEndX} ${trailEndY}`);
+        trail.setAttribute('stroke', e.color || 'var(--primary-red)');
+        trail.setAttribute('stroke-width', '2');
+        trail.setAttribute('fill', 'none');
+        trail.setAttribute('opacity', '0.3');
+        trail.style.transition = 'opacity 0.2s ease';
+        svg.appendChild(trail);
+        wrapper._trail = trail;
 
         // Needle body - polygon para ponta fina com gradiente
         const needleGrad = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
@@ -344,31 +444,10 @@
         textBox.style.pointerEvents = 'none';
         textBox.style.fontSize = '60%';
 
-        // Título interno - BEM CENTRADO NO MEIO DO GAUGE
-        const title = document.createElement('div');
-        title.style.position = 'absolute';
-        title.style.top = '50%';
-        title.style.left = '50%';
-        title.style.transform = 'translate(-50%, -50%)';
-        title.style.width = '90%';
-        title.style.textAlign = 'center';
-        title.style.pointerEvents = 'none';
-        title.style.fontSize = '55%';
-        title.style.color = 'var(--light-red)';
-        title.style.fontWeight = '700';
-        title.style.textShadow = '0 1px 3px rgba(0, 0, 0, 0.8)';
-        title.textContent = e.label || e.id;
-        
-        // Mostrar divisor se configurado
-        if (e.valueDivisor && e.valueDivisor !== 1) {
-            const divisorText = document.createElement('div');
-            divisorText.style.fontSize = '50%';
-            divisorText.style.color = '#888';
-            divisorText.style.marginTop = '1px';
-            divisorText.textContent = `×${e.valueDivisor}`;
-            title.appendChild(divisorText);
-        }
-        svg.appendChild(title);
+        const label = document.createElement('div');
+        label.className = 'marker-label';
+        label.style.fontSize = 'inherit';
+        label.textContent = e.label || e.id;
 
         const value = document.createElement('div');
         value.className = 'marker-value';
@@ -377,13 +456,14 @@
         const divisor = e.valueDivisor || 1;
         value.textContent = (e.value / divisor).toFixed(1);
 
+        textBox.appendChild(label);
         textBox.appendChild(value);
         svg.appendChild(textBox);
 
         wrapper.appendChild(svg);
         wrapper._needle = needle;
         wrapper._valueEl = value;
-        wrapper._trail = null;
+        wrapper._trail = trail;
         wrapper._type = 'gauge';
         wrapper._valueDivisor = e.valueDivisor || 1;
         wrapper._gaugeRotation = e.gaugeRotation || 0;
@@ -402,6 +482,7 @@
                 labelSvgText.textContent = (e.label || '') + (e.unit ? ` (${e.unit})` : '');
                 svg.appendChild(labelSvgText);
             } catch (err) {
+                // fallback: append simple div inside wrapper
                 const labelDiv = document.createElement('div');
                 labelDiv.style.position = 'absolute';
                 labelDiv.style.bottom = '-32px';
@@ -427,59 +508,89 @@
         wrapper.dataset.id = e.id;
         wrapper.style.left = (e.pos && e.pos.x != null ? e.pos.x : 50) + '%';
         wrapper.style.top = (e.pos && e.pos.y != null ? e.pos.y : 50) + '%';
-        
         const scale = (e.sizeScale || 100) / 100;
-        const widthPx = 120 * scale;
-        const heightPx = 60 * scale;
+        const widthPx = 220 * scale;
+        const heightPx = 48 * scale;
         wrapper.style.width = widthPx + 'px';
         wrapper.style.height = heightPx + 'px';
 
         const cont = document.createElement('div');
         cont.style.display = 'flex';
         cont.style.flexDirection = 'column';
-        cont.style.gap = '8px';
-        cont.style.padding = '10px';
+        cont.style.gap = '6px';
+        cont.style.padding = '6px';
+        cont.style.width = '100%';
+        cont.style.height = '100%';
 
         const label = document.createElement('div');
         label.style.fontSize = '12px';
         label.style.color = 'var(--text-light)';
+        label.style.fontWeight = '700';
+        label.style.textAlign = 'left';
         label.textContent = e.label || e.id;
 
+        // Value / unit
+        const value = document.createElement('div');
+        value.style.fontSize = '12px';
+        value.style.color = 'var(--light-red)';
+        value.style.textAlign = 'right';
+        value.style.fontWeight = '700';
+        const unitStr = e.unit ? ` ${e.unit}` : '';
+        value.textContent = (e.value !== undefined ? e.value.toFixed(1) : '') + unitStr;
+
+        // Bar container
+        const barOuter = document.createElement('div');
+        barOuter.style.position = 'relative';
+        barOuter.style.width = '100%';
+        barOuter.style.flex = '1';
+        barOuter.style.display = 'flex';
+        barOuter.style.alignItems = 'center';
+        barOuter.style.justifyContent = 'center';
+
+        // border around bar
         const bar = document.createElement('div');
         bar.style.width = '100%';
-        bar.style.height = '12px';
-        bar.style.background = '#333';
-        bar.style.border = '1px solid var(--border-color)';
-        bar.style.borderRadius = '6px';
+        bar.style.height = '14px';
+        bar.style.background = '#222';
+        bar.style.border = '1px solid rgba(255,255,255,0.06)';
+        bar.style.borderRadius = '8px';
         bar.style.overflow = 'hidden';
+        bar.style.position = 'relative';
+        bar.style.transition = 'height 0.3s ease';
 
+        // fill element (will show gradient and width)
         const fill = document.createElement('div');
         fill.style.height = '100%';
-        fill.style.background = e.color || 'var(--primary-red)';
-        fill.style.width = ((e.value - e.min) / (e.max - e.min)) * 100 + '%';
-        fill.style.transition = 'width 0.3s ease';
-        bar.appendChild(fill);
+        fill.style.width = ((e.value - (e.min || 0)) / ((e.max || 1) - (e.min || 0))) * 100 + '%';
+        fill.style.transition = 'width 0.5s ease, background-color 0.3s ease';
+        fill.style.boxShadow = 'inset 0 1px 0 rgba(255,255,255,0.06)';
+        // choose gradient colors
+        const cold = e.coldColor || '#2ea8ff';
+        const hot = e.hotColor || (e.color || '#ff6b6b');
+        fill.style.background = `linear-gradient(to right, ${cold}, ${hot})`;
 
-        const value = document.createElement('div');
-        value.style.fontSize = '11px';
-        value.style.color = 'var(--light-red)';
-        value.style.textAlign = 'center';
-        value.textContent = e.value.toFixed(1);
+        bar.appendChild(fill);
+        barOuter.appendChild(bar);
 
         cont.appendChild(label);
-        cont.appendChild(bar);
+        cont.appendChild(barOuter);
         cont.appendChild(value);
         wrapper.appendChild(cont);
 
+        // mode: 'fill' (default) or 'thickness' (bar grows in height with value)
         wrapper._fillEl = fill;
+        wrapper._barEl = bar;
         wrapper._valueEl = value;
         wrapper._type = 'bar';
+        wrapper._mode = e.mode || 'fill';
+        wrapper._coldColor = cold;
+        wrapper._hotColor = hot;
         return wrapper;
     }
 
     function createLEDElement(e) {
         const wrapper = document.createElement('div');
-        wrapper.className = 'dashboard-marker';
+        wrapper.className = 'dashboard-marker led-marker';
         wrapper.dataset.id = e.id;
         wrapper.style.left = (e.pos && e.pos.x != null ? e.pos.x : 50) + '%';
         wrapper.style.top = (e.pos && e.pos.y != null ? e.pos.y : 50) + '%';
@@ -504,7 +615,8 @@
         label.textContent = e.label || e.id;
 
         const led = document.createElement('div');
-        led.style.width = '100%';
+            led.style.width = '100%';
+            led.style.aspectRatio = '1/1';
         led.style.aspectRatio = '1/1';
         led.style.borderRadius = '50%';
         const isOn = e.value >= e.threshold;
@@ -552,10 +664,11 @@
         wrapper.style.top = (e.pos && e.pos.y != null ? e.pos.y : 50) + '%';
         
         const scale = (e.sizeScale || 100) / 100;
-        const widthPx = 200 * scale;
-        const heightPx = 50 * scale;
-        wrapper.style.width = widthPx + 'px';
-        wrapper.style.height = heightPx + 'px';
+        // Use percentage sizing so bar-marker scales with dashboard
+        const baseWidthPercent = 18; // % of dashboard width
+        const baseHeightPercent = 10; // % of dashboard width (approx)
+        wrapper.style.width = (baseWidthPercent * scale) + '%';
+        wrapper.style.height = (baseHeightPercent * scale) + '%';
 
         const cont = document.createElement('div');
         cont.style.display = 'flex';
@@ -624,6 +737,27 @@
             marker.style.zIndex = '10';
             marker.title = `Marcador: ${e.markerValue}`;
             bar.appendChild(marker);
+            // store marker for updates
+            bar._markerIndicator = marker;
+        }
+
+        barContainer.appendChild(bar);
+        if (e.markerValue !== undefined && e.markerValue !== null) {
+            const markerPercent = Math.max(0, Math.min(100, ((e.markerValue - e.min) / (e.max - e.min)) * 100));
+            const marker = document.createElement('div');
+            marker.style.position = 'absolute';
+            marker.style.top = '-8px';
+            marker.style.left = markerPercent + '%';
+            marker.style.transform = 'translateX(-50%)';
+            marker.style.width = '0';
+            marker.style.height = '0';
+            marker.style.borderLeft = '6px solid transparent';
+            marker.style.borderRight = '6px solid transparent';
+            marker.style.borderTop = '10px solid ' + (e.markerColor || '#FFD700');
+            marker.style.filter = 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0.8))';
+            marker.style.zIndex = '10';
+            marker.title = `Marcador: ${e.markerValue}`;
+            bar.appendChild(marker);
             bar._markerIndicator = marker;
         }
 
@@ -669,6 +803,61 @@
         wrapper.appendChild(textDiv);
         wrapper._textEl = textDiv;
         wrapper._type = 'text';
+        return wrapper;
+    }
+
+    function createDigitalElement(e) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'dashboard-marker digital-marker';
+        wrapper.dataset.id = e.id;
+        wrapper.style.left = (e.pos && e.pos.x != null ? e.pos.x : 50) + '%';
+        wrapper.style.top = (e.pos && e.pos.y != null ? e.pos.y : 50) + '%';
+        const scale = (e.sizeScale || 100) / 100;
+        const widthPx = (e.widthPx || 140) * scale;
+        const heightPx = (e.heightPx || 48) * scale;
+        wrapper.style.width = widthPx + 'px';
+        wrapper.style.height = heightPx + 'px';
+
+        const box = document.createElement('div');
+        box.style.width = '100%';
+        box.style.height = '100%';
+        box.style.display = 'flex';
+        box.style.flexDirection = 'column';
+        box.style.justifyContent = 'center';
+        box.style.alignItems = 'center';
+        box.style.background = 'linear-gradient(180deg, rgba(0,0,0,0.45), rgba(0,0,0,0.6))';
+        box.style.border = '2px solid rgba(255,255,255,0.06)';
+        box.style.borderRadius = '6px';
+        box.style.boxShadow = 'inset 0 -6px 18px rgba(0,0,0,0.6), 0 6px 18px rgba(0,0,0,0.6)';
+        box.style.padding = '6px 10px';
+
+        const title = document.createElement('div');
+        title.textContent = e.label || e.id;
+        title.style.fontSize = '11px';
+        title.style.color = 'var(--text-light)';
+        title.style.alignSelf = 'stretch';
+        title.style.textAlign = 'left';
+        title.style.marginBottom = '4px';
+
+        const val = document.createElement('div');
+        val.className = 'digital-value';
+        val.style.fontFamily = 'monospace, monospace';
+        val.style.fontSize = '22px';
+        val.style.letterSpacing = '1px';
+        val.style.color = e.color || '#00ff88';
+        val.style.fontWeight = '700';
+        val.style.textShadow = '0 2px 8px rgba(0,0,0,0.6)';
+        const unit = e.unit ? ` ${e.unit}` : '';
+        val.textContent = (e.value !== undefined ? (e.value).toFixed(1) : '-') + unit;
+
+        box.appendChild(title);
+        box.appendChild(val);
+        wrapper.appendChild(box);
+
+        wrapper._digitEl = val;
+        wrapper._type = 'digital';
+        wrapper._displayUnit = unit;
+        wrapper._currentValue = e.value || 0;
         return wrapper;
     }
 
@@ -949,6 +1138,7 @@
         if (e.type === 'bar') return createBarElement(e);
         if (e.type === 'led') return createLEDElement(e);
         if (e.type === 'text') return createTextElement(e);
+        if (e.type === 'digital') return createDigitalElement(e);
         if (e.type === 'bar-marker') return createBarMarkerElement(e);
         if (e.type === 'conditional-text') return createConditionalTextElement(e);
         if (e.type === 'button') return createButtonElement(e);
@@ -966,11 +1156,81 @@
             const center = size / 2;
             const needleRotation = ((newValue - e.min) / (e.max - e.min)) * 270 - 135;
             el._needle.setAttribute('transform', `rotate(${needleRotation} ${center} ${center})`);
-            if (el._valueEl) el._valueEl.textContent = newValue.toFixed(1);
+            
+            // Atualizar rastro (trail)
+            if (el._trail) {
+                const startAngle = -135;
+                const endAngle = needleRotation;
+                const trailRadius = radius - 5;
+                const trailStartX = center + trailRadius * Math.cos(startAngle * Math.PI / 180);
+                const trailStartY = center + trailRadius * Math.sin(startAngle * Math.PI / 180);
+                const trailEndX = center + trailRadius * Math.cos(endAngle * Math.PI / 180);
+                const trailEndY = center + trailRadius * Math.sin(endAngle * Math.PI / 180);
+                const largeArc = Math.abs(endAngle - startAngle) > 180 ? 1 : 0;
+                el._trail.setAttribute('d', `M ${trailStartX} ${trailStartY} A ${trailRadius} ${trailRadius} 0 ${largeArc} 1 ${trailEndX} ${trailEndY}`);
+            }
+
+            // Atualizar zona de perigo (se existir)
+            if (el._dangerPath && e.dangerZone && e.min != null && e.max != null) {
+                try {
+                    const dangerStart = ((e.dangerZone.start - e.min) / (e.max - e.min)) * 270 - 135;
+                    const dangerEnd = ((e.dangerZone.end - e.min) / (e.max - e.min)) * 270 - 135;
+                    const dangerRadius = radius - 3;
+                    const dangerStartX = center + dangerRadius * Math.cos(dangerStart * Math.PI / 180);
+                    const dangerStartY = center + dangerRadius * Math.sin(dangerStart * Math.PI / 180);
+                    const dangerEndX = center + dangerRadius * Math.cos(dangerEnd * Math.PI / 180);
+                    const dangerEndY = center + dangerRadius * Math.sin(dangerEnd * Math.PI / 180);
+                    const dangerLargeArc = Math.abs(dangerEnd - dangerStart) > 180 ? 1 : 0;
+                    el._dangerPath.setAttribute('d', `M ${dangerStartX} ${dangerStartY} A ${dangerRadius} ${dangerRadius} 0 ${dangerLargeArc} 1 ${dangerEndX} ${dangerEndY}`);
+                    el._dangerPath.setAttribute('stroke', e.dangerZone.color || '#FF4444');
+                    el._dangerPath.style.filter = `drop-shadow(0 0 4px ${e.dangerZone.color || 'rgba(255, 68, 68, 0.8)'})`;
+                } catch (err) {}
+            }
+
+            // Atualizar zona de warning (se existir)
+            if (el._warningPath && e.warningZone && e.min != null && e.max != null) {
+                try {
+                    const warningStart = ((e.warningZone.start - e.min) / (e.max - e.min)) * 270 - 135;
+                    const warningEnd = ((e.warningZone.end - e.min) / (e.max - e.min)) * 270 - 135;
+                    const warningRadius = radius - 6;
+                    const warnStartX = center + warningRadius * Math.cos(warningStart * Math.PI / 180);
+                    const warnStartY = center + warningRadius * Math.sin(warningStart * Math.PI / 180);
+                    const warnEndX = center + warningRadius * Math.cos(warningEnd * Math.PI / 180);
+                    const warnEndY = center + warningRadius * Math.sin(warningEnd * Math.PI / 180);
+                    const warnArc = Math.abs(warningEnd - warningStart) > 180 ? 1 : 0;
+                    el._warningPath.setAttribute('d', `M ${warnStartX} ${warnStartY} A ${warningRadius} ${warningRadius} 0 ${warnArc} 1 ${warnEndX} ${warnEndY}`);
+                    el._warningPath.setAttribute('stroke', e.warningZone.color || '#FFD54F');
+                    el._warningPath.style.filter = `drop-shadow(0 0 3px ${e.warningZone.color || 'rgba(255, 213, 79, 0.8)'})`;
+                } catch (err) {}
+            }
+            
+            // Atualizar valor com divisor
+            if (el._valueEl) {
+                const divisor = el._valueDivisor || 1;
+                el._valueEl.textContent = (newValue / divisor).toFixed(1);
+            }
         } else if (el._type === 'bar' && el._fillEl) {
-            const pct = ((newValue - e.min) / (e.max - e.min)) * 100;
-            el._fillEl.style.width = pct + '%';
-            if (el._valueEl) el._valueEl.textContent = newValue.toFixed(1);
+            const min = (e.min != null ? e.min : 0);
+            const max = (e.max != null ? e.max : 1);
+            const pct = ((newValue - min) / (max - min)) * 100;
+            const clampedPct = Math.max(0, Math.min(100, pct));
+            el._fillEl.style.width = clampedPct + '%';
+            if (el._valueEl) el._valueEl.textContent = newValue.toFixed(1) + (e.unit ? ` ${e.unit}` : '');
+
+            // update gradient colors if provided
+            try {
+                const cold = el._coldColor || '#2ea8ff';
+                const hot = el._hotColor || (e.color || '#ff6b6b');
+                el._fillEl.style.background = `linear-gradient(to right, ${cold}, ${hot})`;
+            } catch (err) {}
+
+            // thickness mode: increase bar height as value increases
+            if (el._mode === 'thickness' && el._barEl) {
+                const baseH = 8; // px
+                const maxH = 40; // px
+                const newH = Math.round(baseH + (clampedPct / 100) * (maxH - baseH));
+                el._barEl.style.height = newH + 'px';
+            }
         } else if (el._type === 'bar-marker' && el._fillEl) {
             const pct = ((newValue - e.min) / (e.max - e.min)) * 100;
             el._fillEl.style.width = pct + '%';
@@ -993,6 +1253,23 @@
                 iconEl.style.color = isActive ? 'white' : '#999';
                 iconEl.style.textShadow = isActive ? `0 0 6px ${e.color || '#00FF00'}` : 'none';
             }
+        } else if (el._type === 'digital' && el._digitEl) {
+            // animate numeric change
+            const start = typeof el._currentValue === 'number' ? el._currentValue : parseFloat((el._digitEl.textContent || '0').replace(/[^0-9.\-]/g, '')) || 0;
+            const end = Number(newValue);
+            const duration = 400;
+            const startTime = performance.now();
+            el._currentValue = start;
+            function step(now) {
+                const t = Math.min(1, (now - startTime) / duration);
+                // easeOutQuad
+                const eased = t * (2 - t);
+                const val = start + (end - start) * eased;
+                el._digitEl.textContent = val.toFixed(1) + (el._displayUnit || '');
+                if (t < 1) requestAnimationFrame(step);
+                else el._currentValue = end;
+            }
+            requestAnimationFrame(step);
         } else if (el._type === 'text' && el._textEl) {
             el._textEl.textContent = e.text || e.label || '';
         } else if (el._type === 'conditional-text' && el._textEl) {
@@ -1032,28 +1309,139 @@
         }
     }
 
-    function renderViewMode() {
-        if (!container) return;
-        container.innerHTML = '';
-        container.style.position = 'relative';
-        container.style.width = '100%';
-        container.style.height = '100%';
+    function renderViewMode(targetContainer = container) {
+        if (!targetContainer) return;
+        targetContainer.innerHTML = '';
+        targetContainer.style.position = 'relative';
+        targetContainer.style.width = '100%';
+        targetContainer.style.height = '100%';
+        // create or reuse dashboard-stage inside the container
+        let stage = targetContainer.querySelector('.dashboard-stage');
+        if (!stage) {
+            stage = document.createElement('div');
+            stage.className = 'dashboard-stage';
+            // allow override of design dimensions per container
+            if (targetContainer.dataset && targetContainer.dataset.designWidth) {
+                stage.dataset.designWidth = targetContainer.dataset.designWidth;
+                stage.style.setProperty('--dashboard-design-width', targetContainer.dataset.designWidth);
+            }
+
+                // Helper to abstract CommonInfo access (supports getValue API if present)
+                function getCommonValue(fieldId) {
+                    try {
+                        if (!fieldId) return undefined;
+                        if (window.CommonInfo) {
+                            if (typeof window.CommonInfo.getValue === 'function') {
+                                return window.CommonInfo.getValue(fieldId);
+                            }
+                            if (window.CommonInfo.data && window.CommonInfo.data[fieldId]) {
+                                return window.CommonInfo.data[fieldId].value;
+                            }
+                        }
+                    } catch (err) { /* ignore */ }
+                    return undefined;
+                }
+            if (targetContainer.dataset && targetContainer.dataset.designHeight) {
+                stage.dataset.designHeight = targetContainer.dataset.designHeight;
+                stage.style.setProperty('--dashboard-design-height', targetContainer.dataset.designHeight);
+            }
+            targetContainer.appendChild(stage);
+        } else {
+            stage.innerHTML = '';
+        }
         
         elements.forEach(e => {
-            // Alimentar com dados do CommonInfo se fieldId estiver configurado
+            // Alimentar com dados do CommonInfo se fieldId ou sourceElementId estiver configurado
             let elementWithData = e;
-            if (window.CommonInfo && window.CommonInfo.data && e.fieldId) {
-                const fieldData = window.CommonInfo.data[e.fieldId];
-                if (fieldData) {
+            // If element is bound to another element (source), prefer that source
+            if (e.sourceElementId) {
+                const src = elements.find(s => s.id === e.sourceElementId);
+                if (src) {
                     elementWithData = JSON.parse(JSON.stringify(e));
-                    elementWithData.value = fieldData.value !== undefined ? fieldData.value : e.value;
-                    if (!e.label) elementWithData.label = fieldData.title;
-                    if (!e.unit) elementWithData.unit = fieldData.unit;
+                    // If source has a fieldId, prefer realtime CommonInfo value
+                    if (src.fieldId) {
+                        const sVal = getCommonValue(src.fieldId);
+                        if (sVal != null) elementWithData.value = sVal != null ? sVal : (src.value || e.value);
+                    } else {
+                        elementWithData.value = src.value !== undefined ? src.value : e.value;
+                    }
+                    // inherit unit and range from source when not defined
+                    if (!elementWithData.unit && src.unit) elementWithData.unit = src.unit;
+                    if ((elementWithData.min == null) && (src.min != null)) elementWithData.min = src.min;
+                    if ((elementWithData.max == null) && (src.max != null)) elementWithData.max = src.max;
+                }
+            } else if (e.fieldId) {
+                const fval = getCommonValue(e.fieldId);
+                if (fval != null) {
+                    elementWithData = JSON.parse(JSON.stringify(e));
+                    elementWithData.value = fval != null ? fval : e.value;
+                    if (!e.label && window.CommonInfo && window.CommonInfo.data && window.CommonInfo.data[e.fieldId]) elementWithData.label = window.CommonInfo.data[e.fieldId].title;
+                    if (!e.unit && window.CommonInfo && window.CommonInfo.data && window.CommonInfo.data[e.fieldId]) elementWithData.unit = window.CommonInfo.data[e.fieldId].unit;
                 }
             }
 
             const el = createElement(elementWithData);
-            container.appendChild(el);
+            // sanitize inner element so it fits the wrapper
+            try {
+                el.style.removeProperty('left');
+                el.style.removeProperty('top');
+                el.style.removeProperty('transform');
+                el.style.position = 'relative';
+                el.style.width = '100%';
+                el.style.height = '100%';
+            } catch (err) {}
+
+            // create a dashboard-item wrapper to control percent-based pos/size
+            const item = document.createElement('div');
+            item.className = 'dashboard-item';
+            // compute base size percent depending on type
+            let baseW = 10; // percent of design width
+            let baseH = 10; // percent of design height
+            if (elementWithData.type === 'gauge') { baseW = 12; baseH = 12; }
+            else if (elementWithData.type === 'bar' || elementWithData.type === 'bar-marker') { baseW = 28; baseH = 10; }
+            else if (elementWithData.type === 'led') { baseW = 6; baseH = 8; }
+            else if (elementWithData.type === 'text' || elementWithData.type === 'conditional-text') { baseW = 12; baseH = 6; }
+
+            const sizeScale = (elementWithData.sizeScale || 100) / 100;
+            const wPercent = Math.max(1, baseW * sizeScale);
+            const hPercent = Math.max(1, baseH * sizeScale);
+
+            // set custom properties on wrapper
+            item.style.setProperty('--x', (elementWithData.pos && elementWithData.pos.x != null) ? elementWithData.pos.x : 50);
+            item.style.setProperty('--y', (elementWithData.pos && elementWithData.pos.y != null) ? elementWithData.pos.y : 50);
+            item.style.setProperty('--w', wPercent);
+            item.style.setProperty('--h', hPercent);
+
+            // append original element as content
+            item.appendChild(el);
+            stage.appendChild(item);
+            // In view mode we must ensure widgets never escape the modal bounds.
+            // Positioning here computes px bounds and clamps left/top so the whole element stays inside (0%..100%).
+            try {
+                // positioning is delegated to the .dashboard-stage and --x/--y variables
+                // no further px clamping required here because the stage scales and contains items.
+                // but keep percent values bounded
+                if (e.pos) {
+                    e.pos.x = clampPercent(e.pos.x);
+                    e.pos.y = clampPercent(e.pos.y);
+                }
+            } catch (err) {
+                // fallback to safe percent clamp
+                try {
+                    if (el && el.style) {
+                        if (el.style.left) {
+                            const l = clampPercent(el.style.left.replace('%', ''));
+                            el.style.left = l + '%';
+                        }
+                        if (el.style.top) {
+                            const t = clampPercent(el.style.top.replace('%', ''));
+                            el.style.top = t + '%';
+                        }
+                    }
+                } catch (err2) {
+                    console.warn('Erro ao ajustar posição do elemento:', err2);
+                }
+            }
             
             // Para LED com condições, avaliar se deve piscar
             if (e.type === 'led' && e.blink) {
@@ -1089,34 +1477,52 @@
     function updateFromCommonInfo() {
         if (!editMode) {
             elements.forEach((e, idx) => {
-                if (e.fieldId && window.CommonInfo && window.CommonInfo.data) {
-                    const fieldData = window.CommonInfo.data[e.fieldId];
-                    if (fieldData && fieldData.value !== e.value) {
-                        const el = container.querySelector(`[data-id="${e.id}"]`);
-                        if (el) {
-                            // Atualizar valor do elemento
-                            let newValue = fieldData.value;
-                            
-                            // Se for LED com condição, calcular se deve piscar
-                            if (e.type === 'led' && e.blink && e.sourceElementId && e.conditionOperator) {
-                                const sourceElement = elements.find(el => el.id === e.sourceElementId);
-                                if (sourceElement && window.CommonInfo.data[sourceElement.fieldId]) {
-                                    const sourceValue = window.CommonInfo.data[sourceElement.fieldId].value;
-                                    try {
-                                        const shouldBlink = eval(`${sourceValue} ${e.conditionOperator} ${e.conditionThreshold}`);
-                                        if (shouldBlink) {
-                                            startBlinking(el);
-                                        } else {
-                                            stopBlinking(e.id);
-                                        }
-                                    } catch (err) {
-                                        console.error('Erro ao avaliar condição LED:', err);
-                                    }
+                let newValue = undefined;
+
+                // If bound to another element, try to get source value
+                if (e.sourceElementId) {
+                    const src = elements.find(s => s.id === e.sourceElementId);
+                    if (src) {
+                        if (src.fieldId) {
+                            const sv = getCommonValue(src.fieldId);
+                            if (sv != null) newValue = sv;
+                            else newValue = src.value;
+                        } else {
+                            newValue = src.value;
+                        }
+                    }
+                }
+
+                // Otherwise, if bound to CommonInfo directly
+                if (newValue == null && e.fieldId) {
+                    const fv = getCommonValue(e.fieldId);
+                    if (fv != null) newValue = fv;
+                }
+
+                if (newValue !== undefined && newValue !== e.value) {
+                    const el = container.querySelector(`[data-id="${e.id}"]`);
+                    if (el) {
+                        // special handling: LED with source condition evaluation
+                        if (e.type === 'led' && e.blink && e.sourceElementId && e.conditionOperator) {
+                            const sourceElement = elements.find(el2 => el2.id === e.sourceElementId);
+                                if (sourceElement) {
+                                let sourceValue;
+                                if (sourceElement.fieldId) {
+                                    const tmpv = getCommonValue(sourceElement.fieldId);
+                                    sourceValue = (tmpv != null ? tmpv : sourceElement.value);
+                                } else {
+                                    sourceValue = sourceElement.value;
+                                }
+                                try {
+                                    const shouldBlink = eval(`${sourceValue} ${e.conditionOperator} ${e.conditionThreshold}`);
+                                    if (shouldBlink) startBlinking(el);
+                                    else stopBlinking(e.id);
+                                } catch (err) {
+                                    console.error('Erro ao avaliar condição LED:', err);
                                 }
                             }
-                            
-                            updateElement(el, newValue);
                         }
+                        updateElement(el, newValue);
                     }
                 }
             });
@@ -1125,6 +1531,19 @@
 
     // Atualizar a cada 100ms
     setInterval(updateFromCommonInfo, 100);
+
+    // Se CommonInfo expõe onUpdate, inscrever para atualizações imediatas sem sobrepor callbacks anteriores
+    try {
+        if (window.CommonInfo && typeof window.CommonInfo.onUpdate === 'function') {
+            const prev = window.CommonInfo.onDataReceived;
+            window.CommonInfo.onUpdate((data) => {
+                try { updateFromCommonInfo(); } catch (err) {}
+                if (typeof prev === 'function') {
+                    try { prev(data); } catch (err) { console.error(err); }
+                }
+            });
+        }
+    } catch (err) {}
 
     function renderEditMode() {
         if (!container) return;
@@ -1152,6 +1571,39 @@
         leftContent.style.overflowY = 'auto';
         leftContent.style.padding = '20px';
 
+        // Share/Import config UI (one-line code)
+        const shareSection = document.createElement('div');
+        shareSection.style.marginBottom = '12px';
+        shareSection.style.padding = '10px';
+        shareSection.style.border = '1px solid var(--border-color)';
+        shareSection.style.borderRadius = '6px';
+        shareSection.style.background = 'rgba(0,0,0,0.04)';
+
+        const shareTitle = document.createElement('div');
+        shareTitle.style.fontSize = '13px';
+        shareTitle.style.fontWeight = '700';
+        shareTitle.style.color = 'var(--light-red)';
+        shareTitle.style.marginBottom = '8px';
+        shareTitle.textContent = 'Compartilhar / Importar Configuração';
+        shareSection.appendChild(shareTitle);
+
+        // Use os botões 'Gerar & Copiar' e 'Carregar Configuração' no rodapé para exportar/importar
+        const shareHint = document.createElement('div');
+        shareHint.style.fontSize = '12px';
+        shareHint.style.color = 'var(--text-light)';
+        shareHint.style.marginTop = '6px';
+        shareHint.textContent = "Use 'Gerar & Copiar' e 'Carregar Configuração' no rodapé para exportar/importar o painel.";
+        shareSection.appendChild(shareHint);
+
+        leftContent.appendChild(shareSection);
+
+        // Body area for element-specific fields (kept separate so shareSection remains)
+        const leftBody = document.createElement('div');
+        leftBody.className = 'left-body';
+        leftBody.style.flex = '1';
+        leftBody.style.overflowY = 'auto';
+        leftContent.appendChild(leftBody);
+
         const leftFooter = document.createElement('div');
         leftFooter.style.padding = '15px 20px';
         leftFooter.style.borderTop = '1px solid var(--border-color)';
@@ -1162,7 +1614,36 @@
         rightPanel.style.flex = '1';
         rightPanel.style.position = 'relative';
         rightPanel.style.background = 'rgba(0,0,0,0.3)';
+        rightPanel.style.display = 'flex';
+        rightPanel.style.alignItems = 'center';
+        rightPanel.style.justifyContent = 'center';
+        rightPanel.style.padding = '20px';
         rightPanel.style.overflow = 'hidden';
+
+        // Canvas container com mesma proporção do dashboard - PAINEL DELIMITADOR
+        const canvasContainer = document.createElement('div');
+        canvasContainer.style.position = 'relative';
+        canvasContainer.style.width = '100%';
+        canvasContainer.style.maxWidth = '1200px';
+        canvasContainer.style.aspectRatio = '16 / 9';
+        canvasContainer.style.background = 'linear-gradient(135deg, rgba(0,0,0,0.7) 0%, rgba(20,20,20,0.9) 100%)';
+        canvasContainer.style.borderRadius = '8px';
+        canvasContainer.style.overflow = 'hidden';
+        canvasContainer.style.boxShadow = '0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.1)';
+        canvasContainer.style.border = '1px solid rgba(139,0,0,0.3)';
+
+        // Texto indicador do painel
+        const panelIndicator = document.createElement('div');
+        panelIndicator.style.position = 'absolute';
+        panelIndicator.style.top = '8px';
+        panelIndicator.style.left = '12px';
+        panelIndicator.style.fontSize = '11px';
+        panelIndicator.style.color = 'rgba(169,169,169,0.6)';
+        panelIndicator.style.fontWeight = '600';
+        panelIndicator.style.zIndex = '1';
+        panelIndicator.style.pointerEvents = 'none';
+        panelIndicator.textContent = 'PREVIEW DO PAINEL';
+        canvasContainer.appendChild(panelIndicator);
 
         const canvas = document.createElement('div');
         canvas.style.position = 'absolute';
@@ -1170,18 +1651,186 @@
         canvas.style.height = '100%';
         canvas.style.left = '0';
         canvas.style.top = '0';
+        canvasContainer.appendChild(canvas);
+
+        // create a dashboard-stage inside the preview canvas to keep same coordinate system
+        let editStage = canvas.querySelector('.dashboard-stage');
+        if (!editStage) {
+            editStage = document.createElement('div');
+            editStage.className = 'dashboard-stage';
+            // set design size same as default or as provided by canvasContainer
+            editStage.dataset.designWidth = canvasContainer.dataset.designWidth || '500';
+            editStage.dataset.designHeight = canvasContainer.dataset.designHeight || '500';
+            canvas.appendChild(editStage);
+        } else {
+            editStage.innerHTML = '';
+        }
+
+        // helper: compute base percent sizes per type (same logic as used when creating previews)
+        function computeBaseSizeForType(type) {
+            let baseW = 10, baseH = 10;
+            if (type === 'gauge') { baseW = 12; baseH = 12; }
+            else if (type === 'bar' || type === 'bar-marker') { baseW = 28; baseH = 10; }
+            else if (type === 'led') { baseW = 6; baseH = 8; }
+            else if (type === 'text' || type === 'conditional-text') { baseW = 12; baseH = 6; }
+            else if (type === 'digital') { baseW = 12; baseH = 6; }
+            return { baseW, baseH };
+        }
+
+        // helper: update preview appearance for a single element index without full re-render
+        function updatePreviewForElement(idx) {
+            try {
+                const e = elements[idx];
+                const preview = editStage.querySelector(`.dashboard-item[data-idx="${idx}"]`);
+                if (!preview) return;
+
+                // recompute base sizes
+                const { baseW, baseH } = computeBaseSizeForType(e.type);
+                const sizeScale = (e.sizeScale || 100) / 100;
+                const wPercent = Math.max(1, baseW * sizeScale);
+                const hPercent = Math.max(1, baseH * sizeScale);
+                preview.style.setProperty('--w', wPercent);
+                preview.style.setProperty('--h', hPercent);
+
+                // update position
+                if (e.pos) {
+                    preview.style.setProperty('--x', clampPercent(e.pos.x));
+                    preview.style.setProperty('--y', clampPercent(e.pos.y));
+                }
+
+                // update inner elements depending on type
+                const inner = preview.querySelector('[data-id]') || preview.firstElementChild;
+
+                // compute displayed value for this preview taking into account CommonInfo or source element
+                let displayValue = e.value;
+                try {
+                    const gval = e.fieldId ? getCommonValue(e.fieldId) : undefined;
+                    if (gval != null) {
+                        displayValue = gval;
+                    } else if (e.sourceElementId) {
+                        const src = elements.find(s => s.id === e.sourceElementId);
+                        if (src) {
+                            const sVal = src.fieldId ? getCommonValue(src.fieldId) : undefined;
+                            if (sVal != null) {
+                                displayValue = sVal;
+                            } else {
+                                displayValue = src.value !== undefined ? src.value : displayValue;
+                            }
+                        }
+                    }
+                } catch (err) { /* ignore */ }
+                // For gauge rotation, update wrapper transform or inner as needed
+                if (e.type === 'gauge') {
+                    if (e.gaugeRotation != null) {
+                        // apply rotate on preview wrapper (preserve translate) and set pivot to center
+                        preview.style.transformOrigin = '50% 50%';
+                        preview.style.transform = `translate(-50%, -50%) rotate(${e.gaugeRotation}deg)`;
+                    } else {
+                        preview.style.transform = 'translate(-50%, -50%)';
+                    }
+                    // Update displayed value if exists
+                    const valEl = preview.querySelector('.marker-value');
+                    if (valEl) valEl.textContent = ((displayValue != null ? displayValue : 0) / (e.valueDivisor || 1)).toFixed(1);
+
+                    // update danger / warning arcs (if present on this preview element)
+                    try {
+                        const innerEl = preview.querySelector('[data-id]') || preview.firstElementChild;
+                        if (innerEl && innerEl._dangerPath && e.dangerZone && e.min != null && e.max != null) {
+                            const dangerStart = ((e.dangerZone.start - e.min) / (e.max - e.min)) * 270 - 135;
+                            const dangerEnd = ((e.dangerZone.end - e.min) / (e.max - e.min)) * 270 - 135;
+                            const dangerRadius = (120 / 2 - 15) - 3;
+                            const center = 120 / 2;
+                            const dStartX = center + dangerRadius * Math.cos(dangerStart * Math.PI / 180);
+                            const dStartY = center + dangerRadius * Math.sin(dangerStart * Math.PI / 180);
+                            const dEndX = center + dangerRadius * Math.cos(dangerEnd * Math.PI / 180);
+                            const dEndY = center + dangerRadius * Math.sin(dangerEnd * Math.PI / 180);
+                            const largeArc = Math.abs(dangerEnd - dangerStart) > 180 ? 1 : 0;
+                            innerEl._dangerPath.setAttribute('d', `M ${dStartX} ${dStartY} A ${dangerRadius} ${dangerRadius} 0 ${largeArc} 1 ${dEndX} ${dEndY}`);
+                            innerEl._dangerPath.setAttribute('stroke', e.dangerZone.color || '#FF4444');
+                        }
+
+                        if (innerEl && innerEl._warningPath && e.warningZone && e.min != null && e.max != null) {
+                            const warningStart = ((e.warningZone.start - e.min) / (e.max - e.min)) * 270 - 135;
+                            const warningEnd = ((e.warningZone.end - e.min) / (e.max - e.min)) * 270 - 135;
+                            const warningRadius = (120 / 2 - 15) - 6;
+                            const center = 120 / 2;
+                            const wStartX = center + warningRadius * Math.cos(warningStart * Math.PI / 180);
+                            const wStartY = center + warningRadius * Math.sin(warningStart * Math.PI / 180);
+                            const wEndX = center + warningRadius * Math.cos(warningEnd * Math.PI / 180);
+                            const wEndY = center + warningRadius * Math.sin(warningEnd * Math.PI / 180);
+                            const warnArc = Math.abs(warningEnd - warningStart) > 180 ? 1 : 0;
+                            innerEl._warningPath.setAttribute('d', `M ${wStartX} ${wStartY} A ${warningRadius} ${warningRadius} 0 ${warnArc} 1 ${wEndX} ${wEndY}`);
+                            innerEl._warningPath.setAttribute('stroke', e.warningZone.color || '#FFD54F');
+                        }
+                    } catch (err) {
+                        // ignore preview arc updates
+                    }
+                }
+
+                if (e.type === 'bar' || e.type === 'bar-marker') {
+                    const fill = preview.querySelector('div[style*="width"]') || preview.querySelector('div');
+                    // find fill element by stored ref or by class
+                    const fillEl = preview._fillEl || preview.querySelector('[style*="linear-gradient"]') || preview.querySelector('div > div > div');
+                    if (fillEl) {
+                        const min = (e.min != null ? e.min : 0);
+                        const max = (e.max != null ? e.max : 1);
+                        const useVal = (displayValue != null ? displayValue : (e.value != null ? e.value : 0));
+                        const pct = ((useVal - min) / (max - min)) * 100;
+                        const clamped = Math.max(0, Math.min(100, pct));
+                        fillEl.style.width = clamped + '%';
+                        // update gradient colors
+                        try { fillEl.style.background = `linear-gradient(to right, ${e.coldColor || '#2ea8ff'}, ${e.hotColor || e.color || '#ff6b6b'})`; } catch (err) {}
+                    }
+                    // update value text
+                    const valNode = preview.querySelector('[style*="fontWeight: 700"]') || preview.querySelector('div');
+                    if (valNode && preview._valueEl) preview._valueEl.textContent = (displayValue != null ? Number(displayValue).toFixed(1) : '') + (e.unit ? ` ${e.unit}` : '');
+                }
+
+                if (e.type === 'led') {
+                    const ledEl = preview.querySelector('div[style*="border-radius: 50%"]');
+                    if (ledEl) {
+                        const isOn = (displayValue != null ? displayValue : e.value) >= (e.threshold || 0);
+                        const ledColor = isOn ? (e.color || '#00FF00') : (e.colorOff || '#333');
+                        ledEl.style.background = `radial-gradient(circle at 30% 30%, ${isOn ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.05)'}, ${ledColor})`;
+                        ledEl.style.border = isOn ? `2px solid ${e.color || '#00FF00'}` : '2px solid #555';
+                    }
+                }
+
+                if (e.type === 'digital') {
+                    const digit = preview.querySelector('.digital-value');
+                    if (digit) digit.textContent = (displayValue != null ? Number(displayValue).toFixed(1) : '-') + (e.unit ? ` ${e.unit}` : '');
+                }
+            } catch (err) {
+                console.error('updatePreviewForElement error', err);
+            }
+        }
 
         // Add element previews with drag
         elements.forEach((e, idx) => {
             // Alimentar o elemento com valor real do CommonInfo se disponível
             const elementCopy = JSON.parse(JSON.stringify(e)); // Deep copy
             
-            if (window.CommonInfo && window.CommonInfo.data && elementCopy.fieldId) {
-                const fieldData = window.CommonInfo.data[elementCopy.fieldId];
-                if (fieldData) {
-                    elementCopy.value = fieldData.value || elementCopy.value;
-                    if (!elementCopy.label) elementCopy.label = fieldData.title;
-                    if (!elementCopy.unit) elementCopy.unit = fieldData.unit;
+            // If bound to another element source, inherit its value/unit/range where possible
+            if (elementCopy.sourceElementId) {
+                const src = elements.find(s => s.id === elementCopy.sourceElementId);
+                if (src) {
+                    if (src.fieldId) {
+                        const sFieldVal = getCommonValue(src.fieldId);
+                        if (sFieldVal != null) elementCopy.value = sFieldVal != null ? sFieldVal : (src.value || elementCopy.value);
+                        else elementCopy.value = src.value !== undefined ? src.value : elementCopy.value;
+                    } else {
+                        elementCopy.value = src.value !== undefined ? src.value : elementCopy.value;
+                    }
+                    if (!elementCopy.unit && src.unit) elementCopy.unit = src.unit;
+                    if ((elementCopy.min == null) && (src.min != null)) elementCopy.min = src.min;
+                    if ((elementCopy.max == null) && (src.max != null)) elementCopy.max = src.max;
+                }
+            } else if (elementCopy.fieldId) {
+                const fval = getCommonValue(elementCopy.fieldId);
+                if (fval != null) {
+                    elementCopy.value = fval != null ? fval : elementCopy.value;
+                    if (!elementCopy.label && window.CommonInfo && window.CommonInfo.data && window.CommonInfo.data[elementCopy.fieldId]) elementCopy.label = window.CommonInfo.data[elementCopy.fieldId].title;
+                    if (!elementCopy.unit && window.CommonInfo && window.CommonInfo.data && window.CommonInfo.data[elementCopy.fieldId]) elementCopy.unit = window.CommonInfo.data[elementCopy.fieldId].unit;
                 }
             }
 
@@ -1195,7 +1844,7 @@
                 } else if (elementCopy.type === 'bar-marker') {
                     realElement = createBarMarkerElement(elementCopy);
                 } else if (elementCopy.type === 'led') {
-                    realElement = createLedElement(elementCopy);
+                    realElement = createLEDElement(elementCopy);
                 } else if (elementCopy.type === 'text') {
                     realElement = createTextElement(elementCopy);
                 } else if (elementCopy.type === 'conditional-text') {
@@ -1209,20 +1858,41 @@
 
             if (!realElement) return;
 
-            const preview = realElement;
-            preview.className = 'dashboard-marker edit-draggable';
+            const inner = realElement;
+            // sanitize inner element
+            try {
+                inner.style.removeProperty('left');
+                inner.style.removeProperty('top');
+                inner.style.removeProperty('transform');
+                inner.style.position = 'relative';
+                inner.style.width = '100%';
+                inner.style.height = '100%';
+            } catch (err) {}
+
+            const preview = document.createElement('div');
+            preview.className = 'dashboard-item edit-draggable';
             preview.dataset.id = e.id;
             preview.dataset.idx = idx;
-            preview.style.position = 'absolute';
-            preview.style.left = (e.pos.x) + '%';
-            preview.style.top = (e.pos.y) + '%';
-            preview.style.transform = 'translate(-50%, -50%)';
+            // compute base size
+            let baseW = 10, baseH = 10;
+            if (e.type === 'gauge') { baseW = 12; baseH = 12; }
+            else if (e.type === 'bar' || e.type === 'bar-marker') { baseW = 28; baseH = 10; }
+            else if (e.type === 'led') { baseW = 6; baseH = 8; }
+            else if (e.type === 'text' || e.type === 'conditional-text') { baseW = 12; baseH = 6; }
+            const sizeScale = (e.sizeScale || 100) / 100;
+            preview.style.setProperty('--w', Math.max(1, baseW * sizeScale));
+            preview.style.setProperty('--h', Math.max(1, baseH * sizeScale));
+            preview.style.setProperty('--x', clampPercent(e.pos.x));
+            preview.style.setProperty('--y', clampPercent(e.pos.y));
+            preview.appendChild(inner);
             preview.style.cursor = 'grab';
             preview.style.userSelect = 'none';
             preview.style.zIndex = '10';
-
-            // Mini preview com tamanho proporcional
-            if (false && e.type === 'gauge') {
+            preview.style.transformOrigin = '50% 50%';
+            
+            // NÃO adicionar estilos simples - usar o elemento real já criado criado pelas funções
+            
+            // Drag logic
             let dragging = false;
             let start = { x: 0, y: 0 };
             let bounds = null;
@@ -1234,39 +1904,56 @@
                 preview.setPointerCapture && preview.setPointerCapture(ev.pointerId);
                 start.x = ev.clientX;
                 start.y = ev.clientY;
-                bounds = canvas.getBoundingClientRect();
+                bounds = editStage.getBoundingClientRect();
                 preview.style.cursor = 'grabbing';
                 preview.style.zIndex = '1000';
 
-                // Criar simulação do elemento
-                previewClone = createElement(e);
-                previewClone.style.position = 'absolute';
-                previewClone.style.left = '50%';
-                previewClone.style.top = '50%';
-                previewClone.style.transform = 'translate(-50%, -50%)';
+                // Criar simulação do elemento (wrapper com mesmas props)
+                const innerClone = createElement(e);
+                try {
+                    innerClone.style.removeProperty('left');
+                    innerClone.style.removeProperty('top');
+                    innerClone.style.removeProperty('transform');
+                    innerClone.style.position = 'relative';
+                    innerClone.style.width = '100%';
+                    innerClone.style.height = '100%';
+                } catch (err) {}
+                previewClone = document.createElement('div');
+                previewClone.className = 'dashboard-item preview-clone';
+                const baseWc = (e.type === 'gauge') ? 18 : (e.type === 'bar' || e.type === 'bar-marker') ? 36 : (e.type === 'led') ? 8 : 20;
+                const sizeScaleC = (e.sizeScale || 100) / 100;
+                previewClone.style.setProperty('--w', Math.max(1, baseWc * sizeScaleC));
+                previewClone.style.setProperty('--h', Math.max(1, (e.type === 'gauge' ? 18 : baseWc) * sizeScaleC));
+                previewClone.style.setProperty('--x', e.pos.x || 50);
+                previewClone.style.setProperty('--y', e.pos.y || 50);
                 previewClone.style.pointerEvents = 'none';
                 previewClone.style.opacity = '0.7';
-                canvas.appendChild(previewClone);
+                previewClone.style.transformOrigin = '50% 50%';
+                previewClone.appendChild(innerClone);
+                editStage.appendChild(previewClone);
             }
 
             function onPointerMove(ev) {
                 if (!dragging || !previewClone) return;
                 const dx = ev.clientX - start.x;
                 const dy = ev.clientY - start.y;
-                const currentRect = preview.getBoundingClientRect();
-                const cx = currentRect.left + currentRect.width / 2 + dx;
-                const cy = currentRect.top + currentRect.height / 2 + dy;
+                const centerRect = preview.getBoundingClientRect();
+                const cx = centerRect.left + centerRect.width / 2 + dx;
+                const cy = centerRect.top + centerRect.height / 2 + dy;
 
-                const xClamped = Math.max(bounds.left + 5, Math.min(cx, bounds.right - 5));
-                const yClamped = Math.max(bounds.top + 5, Math.min(cy, bounds.bottom - 5));
+                const xClamped = Math.max(bounds.left + 2, Math.min(cx, bounds.right - 2));
+                const yClamped = Math.max(bounds.top + 2, Math.min(cy, bounds.bottom - 2));
 
                 const px = ((xClamped - bounds.left) / bounds.width) * 100;
                 const py = ((yClamped - bounds.top) / bounds.height) * 100;
 
-                preview.style.left = px + '%';
-                preview.style.top = py + '%';
-                previewClone.style.left = px + '%';
-                previewClone.style.top = py + '%';
+                // update wrapper custom props
+                preview.style.setProperty('--x', px.toFixed(2));
+                preview.style.setProperty('--y', py.toFixed(2));
+                if (previewClone) {
+                    previewClone.style.setProperty('--x', px.toFixed(2));
+                    previewClone.style.setProperty('--y', py.toFixed(2));
+                }
 
                 elements[idx].pos = { x: Math.round(px * 100) / 100, y: Math.round(py * 100) / 100 };
 
@@ -1291,7 +1978,13 @@
             window.addEventListener('pointermove', onPointerMove);
             window.addEventListener('pointerup', onPointerUp);
 
-            canvas.appendChild(preview);
+            // append preview into the editStage so it uses the same coordinate system
+            try {
+                editStage.appendChild(preview);
+            } catch (err) {
+                // fallback
+                canvas.appendChild(preview);
+            }
 
             // Click to edit config
             preview.addEventListener('click', (e) => {
@@ -1306,13 +1999,14 @@
         // Edit panel function
         const showEditPanel = (idx) => {
             const e = elements[idx];
-            leftContent.innerHTML = '';
+            const leftBody = leftContent.querySelector('.left-body') || leftContent;
+            leftBody.innerHTML = '';
 
             const title = document.createElement('h3');
             title.style.color = 'var(--light-red)';
             title.style.marginBottom = '15px';
-            title.textContent = e.label || e.id;
-            leftContent.appendChild(title);
+            title.textContent = e.id;
+            leftBody.appendChild(title);
 
             const infoBox = document.createElement('div');
             infoBox.style.padding = '10px';
@@ -1323,7 +2017,65 @@
             infoBox.style.color = 'var(--text-light)';
             infoBox.style.border = '1px solid rgba(0,200,0,0.3)';
             infoBox.textContent = `Tipo: ${e.type} | Posição: (${Math.round(e.pos.x)}%, ${Math.round(e.pos.y)}%)`;
-            leftContent.appendChild(infoBox);
+            leftBody.appendChild(infoBox);
+
+            // --- Build three-tab editor: Visual | Rótulos | Valores ---
+            const tabsHeader = document.createElement('div');
+            tabsHeader.style.display = 'flex';
+            tabsHeader.style.gap = '6px';
+            tabsHeader.style.marginBottom = '12px';
+
+            const tabButtons = {};
+            const makeTabBtn = (id, labelText, active = false) => {
+                const btn = document.createElement('button');
+                btn.textContent = labelText;
+                btn.dataset.tab = id;
+                btn.style.padding = '8px 10px';
+                btn.style.border = '1px solid var(--border-color)';
+                btn.style.borderRadius = '6px';
+                btn.style.background = active ? 'linear-gradient(90deg,var(--primary-red),#8b0000)' : 'transparent';
+                btn.style.color = active ? 'white' : 'var(--text-light)';
+                btn.style.cursor = 'pointer';
+                btn.style.fontWeight = '700';
+                tabButtons[id] = btn;
+                return btn;
+            };
+
+            const visualBtn = makeTabBtn('visual', 'Visual', true);
+            const labelsBtn = makeTabBtn('labels', 'Rótulos');
+            const valuesBtn = makeTabBtn('values', 'Valores');
+
+            tabsHeader.appendChild(visualBtn);
+            tabsHeader.appendChild(labelsBtn);
+            tabsHeader.appendChild(valuesBtn);
+            leftBody.appendChild(tabsHeader);
+
+            const tabArea = document.createElement('div');
+            tabArea.style.minHeight = '160px';
+            tabArea.style.marginBottom = '10px';
+            leftBody.appendChild(tabArea);
+
+            // create three panes and helper to switch
+            const panes = {
+                visual: document.createElement('div'),
+                labels: document.createElement('div'),
+                values: document.createElement('div')
+            };
+            Object.values(panes).forEach(p => { p.style.display = 'none'; p.style.padding = '6px 0'; tabArea.appendChild(p); });
+            panes.visual.style.display = 'block';
+
+            function switchTo(tabId) {
+                Object.keys(panes).forEach(k => panes[k].style.display = (k === tabId ? 'block' : 'none'));
+                Object.keys(tabButtons).forEach(k => {
+                    const b = tabButtons[k];
+                    if (k === tabId) { b.style.background = 'linear-gradient(90deg,var(--primary-red),#8b0000)'; b.style.color = 'white'; }
+                    else { b.style.background = 'transparent'; b.style.color = 'var(--text-light)'; }
+                });
+            }
+
+            visualBtn.addEventListener('click', () => switchTo('visual'));
+            labelsBtn.addEventListener('click', () => switchTo('labels'));
+            valuesBtn.addEventListener('click', () => switchTo('values'));
 
             const removeBtn = document.createElement('button');
             removeBtn.textContent = '✕ Remover';
@@ -1339,7 +2091,7 @@
                 elements.splice(idx, 1);
                 renderEditMode();
             });
-            leftContent.appendChild(removeBtn);
+            leftBody.appendChild(removeBtn);
 
             const showButtonConfigInfo = (btnConfig) => {
                 const infoPanel = leftContent.querySelector('.button-config-info');
@@ -1390,7 +2142,7 @@
                     });
                 }
 
-                leftContent.insertBefore(infoPanelDiv, leftContent.querySelector('h3').nextSibling);
+                leftBody.insertBefore(infoPanelDiv, leftBody.querySelector('h3').nextSibling);
             };
 
             // Se for botão e tiver config, mostrar informações iniciais
@@ -1402,12 +2154,13 @@
             }
 
             const commonFields = [
-                { label: 'Label', key: 'label', type: 'text' },
-                { label: 'Tipo', key: 'type', type: 'select', options: ['gauge', 'bar', 'bar-marker', 'led', 'text', 'conditional-text', 'button'] },
+                { label: 'ID', key: 'id', type: 'text' },
+                { label: 'Tipo', key: 'type', type: 'select', options: ['gauge', 'bar', 'bar-marker', 'led', 'text', 'conditional-text', 'button', 'digital'] },
                 { label: 'Cor', key: 'color', type: 'color' },
                 { label: 'Tamanho (%)', key: 'sizeScale', type: 'range', min: '25', max: '444', step: '5' },
                 { label: 'Ícone (Bootstrap)', key: 'icon', type: 'text', placeholder: 'Ex: speedometer, power, fuel-pump' },
-                { label: '📡 Campo de Dados', key: 'fieldId', type: 'select', options: [], placeholder: 'Selecione um campo (opcional)' }
+                { label: '📡 Campo de Dados', key: 'fieldId', type: 'select', options: [], placeholder: 'Selecione um campo (opcional)' },
+                { label: 'Fonte (Elemento)', key: 'sourceElementId', type: 'select', options: [], placeholder: 'Selecionar outro elemento como fonte (opcional)' }
             ];
 
             // Populer opções de fieldId do CommonInfo
@@ -1416,8 +2169,11 @@
                     value: f.id,
                     label: `${f.title} (${f.id})`
                 }));
-                commonFields[5].options = fieldOptions; // fieldId é o 6º campo (index 5)
+                commonFields[5].options = fieldOptions; // fieldId is index 5
             }
+
+            // populate sourceElement options from existing elements
+            commonFields[6].options = elements.filter(s => true).map(s => ({ value: s.id, label: `${s.label || s.id} (${s.type})` }));
 
             const gaugeBarFields = [
                 { label: 'Mín', key: 'min', type: 'number' },
@@ -1429,7 +2185,24 @@
                 { label: 'Rotação do Gauge (°)', key: 'gaugeRotation', type: 'range', min: '0', max: '360', step: '5' },
                 { label: 'Zona Perigo - Inicial', key: 'dangerStart', type: 'number', placeholder: 'Deixe vazio sem perigo' },
                 { label: 'Zona Perigo - Final', key: 'dangerEnd', type: 'number' },
-                { label: 'Zona Perigo - Cor', key: 'dangerColor', type: 'color' }
+                { label: 'Zona Perigo - Cor', key: 'dangerColor', type: 'color' },
+                { label: 'Zona Warning - Inicial', key: 'warningStart', type: 'number', placeholder: 'Faixa amarela - início (opcional)' },
+                { label: 'Zona Warning - Final', key: 'warningEnd', type: 'number', placeholder: 'Faixa amarela - fim (opcional)' },
+                { label: 'Zona Warning - Cor', key: 'warningColor', type: 'color' }
+            ];
+
+            const barFields = [
+                { label: 'Modo da Barra', key: 'mode', type: 'select', options: ['fill', 'thickness'], placeholder: 'fill = padrão, thickness = engrossa conforme aumenta' },
+                { label: 'Cor Fria (início)', key: 'coldColor', type: 'color' },
+                { label: 'Cor Quente (fim)', key: 'hotColor', type: 'color' }
+            ];
+
+            const digitalFields = [
+                { label: 'Mín', key: 'min', type: 'number' },
+                { label: 'Máx', key: 'max', type: 'number' },
+                { label: 'Valor', key: 'value', type: 'number' },
+                { label: 'Unidade', key: 'unit', type: 'text' },
+                { label: 'Cor do Texto', key: 'color', type: 'color' }
             ];
 
             const barMarkerFields = [
@@ -1475,8 +2248,13 @@
             
             if (e.type === 'gauge' || e.type === 'bar') {
                 fieldsToShow = [...fieldsToShow, ...gaugeBarFields];
+            }
+            if (e.type === 'bar') {
+                fieldsToShow = [...fieldsToShow, ...barFields];
             } else if (e.type === 'bar-marker') {
                 fieldsToShow = [...fieldsToShow, ...barMarkerFields];
+            } else if (e.type === 'digital') {
+                fieldsToShow = [...fieldsToShow, ...digitalFields];
             } else if (e.type === 'led') {
                 fieldsToShow = [...fieldsToShow, ...ledFields];
             } else if (e.type === 'text') {
@@ -1494,7 +2272,145 @@
                 }
             }
 
+            // Reference to any LED condition source-select so we can keep it sync'd
+            // LED condition source select has been removed — LED uses the central data source configured in the 'Valores' tab.
+
+            // If both fieldId / sourceElementId are available in this element's fields, create a single
+            // mutual-exclusive "Data Source" control in the Values tab so user picks one source only.
+            const hasFieldPick = fieldsToShow.some(ff => ff.key === 'fieldId');
+            const hasElementSource = fieldsToShow.some(ff => ff.key === 'sourceElementId');
+
+            if (hasFieldPick || hasElementSource) {
+                // create a compact source selector with three modes: Fixed | CommonInfo field | Element source
+                const dsContainer = document.createElement('div');
+                dsContainer.style.padding = '12px';
+                dsContainer.style.border = '1px solid var(--border-color)';
+                dsContainer.style.borderRadius = '6px';
+                dsContainer.style.marginBottom = '12px';
+                dsContainer.style.background = 'rgba(0,0,0,0.04)';
+
+                const dsTitle = document.createElement('div');
+                dsTitle.textContent = 'Fonte de dados (Valores)';
+                dsTitle.style.fontWeight = '700';
+                dsTitle.style.color = 'var(--light-red)';
+                dsTitle.style.marginBottom = '8px';
+                dsContainer.appendChild(dsTitle);
+
+                const radioName = 'data_source_' + e.id + '_' + idx;
+                // fixed value
+                const fixedRow = document.createElement('div');
+                fixedRow.style.display = 'flex';
+                fixedRow.style.alignItems = 'center';
+                fixedRow.style.gap = '8px';
+                let rFixed = document.createElement('input'); rFixed.type = 'radio'; rFixed.name = radioName; rFixed.value = 'fixed';
+                const lblFixed = document.createElement('label'); lblFixed.textContent = 'Valor fixo (usado diretamente)'; lblFixed.style.color = 'var(--text-light)';
+                fixedRow.appendChild(rFixed); fixedRow.appendChild(lblFixed);
+                dsContainer.appendChild(fixedRow);
+
+                // commoninfo field
+                const fieldRow = document.createElement('div');
+                fieldRow.style.display = 'flex';
+                fieldRow.style.alignItems = 'center';
+                fieldRow.style.gap = '8px';
+                let rField = document.createElement('input'); rField.type = 'radio'; rField.name = radioName; rField.value = 'field';
+                const lblField = document.createElement('label'); lblField.textContent = 'Campo comum (CommonInfo)'; lblField.style.color = 'var(--text-light)';
+                let fieldSelect = document.createElement('select');
+                fieldSelect.style.marginLeft = '8px'; fieldSelect.style.padding = '6px'; fieldSelect.style.borderRadius = '4px';
+                fieldSelect.style.background = 'var(--bg-dark)'; fieldSelect.style.color = 'var(--text-light)';
+                // populate
+                try {
+                    if (window.CommonInfo && window.CommonInfo.config && window.CommonInfo.config.dataFields) {
+                        const noneOpt = document.createElement('option'); noneOpt.value = ''; noneOpt.textContent = '--- selecione ---'; fieldSelect.appendChild(noneOpt);
+                        window.CommonInfo.config.dataFields.forEach(ff => {
+                            const o = document.createElement('option'); o.value = ff.id; o.textContent = `${ff.title} (${ff.id})`; o.selected = e.fieldId === ff.id; fieldSelect.appendChild(o);
+                        });
+                    } else if (commonFields[5] && commonFields[5].options && commonFields[5].options.length) {
+                        const noneOpt = document.createElement('option'); noneOpt.value = ''; noneOpt.textContent = '--- selecione ---'; fieldSelect.appendChild(noneOpt);
+                        commonFields[5].options.forEach(o => { const opt = document.createElement('option'); opt.value = o.value; opt.textContent = o.label; opt.selected = e.fieldId === o.value; fieldSelect.appendChild(opt); });
+                    } else {
+                        const p = document.createElement('option'); p.value = ''; p.textContent = '(nenhum campo CommonInfo disponível)'; fieldSelect.appendChild(p);
+                    }
+                } catch (err) {}
+
+                fieldRow.appendChild(rField); fieldRow.appendChild(lblField); fieldRow.appendChild(fieldSelect);
+                dsContainer.appendChild(fieldRow);
+
+                // element source
+                const elementRow = document.createElement('div');
+                elementRow.style.display = 'flex'; elementRow.style.alignItems = 'center'; elementRow.style.gap = '8px';
+                let rElement = document.createElement('input'); rElement.type = 'radio'; rElement.name = radioName; rElement.value = 'element';
+                const lblElement = document.createElement('label'); lblElement.textContent = 'Outro elemento (usar valor de outro marcador)'; lblElement.style.color = 'var(--text-light)';
+                let elementSelect = document.createElement('select'); elementSelect.style.marginLeft = '8px'; elementSelect.style.padding = '6px'; elementSelect.style.borderRadius = '4px'; elementSelect.style.background = 'var(--bg-dark)'; elementSelect.style.color = 'var(--text-light)';
+                // populate with elements (exclude self and duplicates)
+                const seen = new Set();
+                const noneE = document.createElement('option'); noneE.value = ''; noneE.textContent = '--- selecione ---'; elementSelect.appendChild(noneE);
+                elements.forEach((it) => { if (!it || !it.id) return; if (it.id === e.id) return; if (seen.has(it.id)) return; seen.add(it.id); const opt = document.createElement('option'); opt.value = it.id; opt.textContent = `${it.label || it.id} (${it.type})`; opt.selected = e.sourceElementId === it.id; elementSelect.appendChild(opt); });
+                elementRow.appendChild(rElement); elementRow.appendChild(lblElement); elementRow.appendChild(elementSelect);
+                dsContainer.appendChild(elementRow);
+
+                // choose initial
+                if (e.fieldId) rField.checked = true; else if (e.sourceElementId) rElement.checked = true; else rFixed.checked = true;
+
+                // event handlers: switching modes
+                // central helper to keep data-source state consistent across all controls
+                function setDataSource(mode, value) {
+                    if (!elements[idx]) return;
+                    if (mode === 'fixed') {
+                        elements[idx].fieldId = null;
+                        elements[idx].sourceElementId = null;
+                    } else if (mode === 'field') {
+                        elements[idx].fieldId = value || null;
+                        elements[idx].sourceElementId = null;
+                    } else if (mode === 'element') {
+                        elements[idx].sourceElementId = value || null;
+                        elements[idx].fieldId = null;
+                    }
+
+                    // keep UI in sync if the controls are available
+                    try {
+                        if (rFixed) rFixed.checked = (mode === 'fixed');
+                        if (rField) rField.checked = (mode === 'field');
+                        if (rElement) rElement.checked = (mode === 'element');
+                        if (fieldSelect) { fieldSelect.disabled = (mode !== 'field'); if (mode === 'field' && value) fieldSelect.value = value; }
+                        if (elementSelect) { elementSelect.disabled = (mode !== 'element'); if (mode === 'element' && value) elementSelect.value = value; }
+                        // LED condition source was removed from the editor — the Values tab is the single source of truth
+                    } catch (err) {}
+
+                    try { updatePreviewForElement(idx); } catch (err) {}
+                }
+
+                function applyMode(mode) {
+                    if (mode === 'fixed') setDataSource('fixed', null);
+                    else if (mode === 'field') setDataSource('field', fieldSelect?.value || null);
+                    else if (mode === 'element') setDataSource('element', elementSelect?.value || null);
+                }
+
+                [rFixed, rField, rElement].forEach(r => r.addEventListener('change', () => setDataSource(r.value, (r.value === 'field' ? fieldSelect?.value : (r.value === 'element' ? elementSelect?.value : null)))));
+                fieldSelect.addEventListener('change', () => { setDataSource('field', fieldSelect.value || null); });
+                elementSelect.addEventListener('change', () => { setDataSource('element', elementSelect.value || null); });
+
+                // disable selects initially depending on current mode
+                if (rFixed.checked) { fieldSelect.disabled = true; elementSelect.disabled = true; }
+                if (rField.checked) { fieldSelect.disabled = false; elementSelect.disabled = true; }
+                if (rElement.checked) { fieldSelect.disabled = true; elementSelect.disabled = false; }
+
+                // place the container into Values pane
+                panes.values.insertBefore(dsContainer, panes.values.firstChild);
+
+                // remove the simple rows for fieldId/sourceElementId from fieldsToShow processing so they don't duplicate
+                fieldsToShow = fieldsToShow.filter(ff => ff.key !== 'fieldId' && ff.key !== 'sourceElementId');
+            }
+
             fieldsToShow.forEach(f => {
+                // Decide to which tab pane this field belongs
+                const visualKeys = new Set(['color','sizeScale','icon','iconRotation','gaugeRotation','fontSize','fontWeight']);
+                const valueKeys = new Set(['min','max','value','valueDivisor','mode','coldColor','hotColor','markerValue','markerColor','threshold','blink','blinkRate','fieldId','sourceElementId']);
+                const labelKeys = new Set(['id','label','unit','type','dangerStart','dangerEnd','dangerColor','warningStart','warningEnd','warningColor']);
+
+                let targetPane = panes.labels; // default
+                if (visualKeys.has(f.key)) targetPane = panes.visual;
+                else if (valueKeys.has(f.key)) targetPane = panes.values;
+                else if (labelKeys.has(f.key)) targetPane = panes.labels;
                 const row = document.createElement('div');
                 row.style.display = 'flex';
                 row.style.flexDirection = 'column';
@@ -1512,7 +2428,10 @@
                     inp = document.createElement('select');
                     // Se for campo de seleção de botão, popular com opções
                     if (f.key === 'buttonConfigId' && dashboardButtonsConfig.length > 0) {
+                        const seenBtn = new Set();
                         dashboardButtonsConfig.forEach(btnConfig => {
+                            if (seenBtn.has(btnConfig.id)) return;
+                            seenBtn.add(btnConfig.id);
                             const optEl = document.createElement('option');
                             optEl.value = btnConfig.id;
                             optEl.textContent = btnConfig.title;
@@ -1520,17 +2439,42 @@
                             inp.appendChild(optEl);
                         });
                     } else {
-                        // Opções regulares
-                        f.options.forEach(opt => {
-                            const optEl = document.createElement('option');
-                            // Se opt é um objeto, usar value e label
-                            const value = typeof opt === 'string' ? opt : opt.value;
-                            const label = typeof opt === 'string' ? opt : opt.label;
-                            optEl.value = value;
-                            optEl.textContent = label;
-                            optEl.selected = e[f.key] === value;
-                            inp.appendChild(optEl);
-                        });
+                        // Special-case: sourceElementId should not include the current element
+                        if (f.key === 'sourceElementId') {
+                            const noneOpt = document.createElement('option');
+                            noneOpt.value = '';
+                            noneOpt.textContent = '--- Nenhuma (opcional) ---';
+                            noneOpt.selected = !e[f.key];
+                            inp.appendChild(noneOpt);
+
+                            const seen = new Set();
+                            elements.forEach((it) => {
+                                if (!it || !it.id) return;
+                                if (it.id === e.id) return; // exclude itself
+                                if (seen.has(it.id)) return;
+                                seen.add(it.id);
+                                const optEl = document.createElement('option');
+                                optEl.value = it.id;
+                                optEl.textContent = `${it.label || it.id} (${it.type})`;
+                                optEl.selected = e[f.key] === it.id;
+                                inp.appendChild(optEl);
+                            });
+                        } else {
+                            // Opções regulares
+                            const seen = new Set();
+                            f.options.forEach(opt => {
+                                const optEl = document.createElement('option');
+                                // Se opt é um objeto, usar value e label
+                                const value = typeof opt === 'string' ? opt : opt.value;
+                                const label = typeof opt === 'string' ? opt : opt.label;
+                                if (seen.has(value)) return;
+                                seen.add(value);
+                                optEl.value = value;
+                                optEl.textContent = label;
+                                optEl.selected = e[f.key] === value;
+                                inp.appendChild(optEl);
+                            });
+                        }
                     }
                     inp.style.padding = '6px 8px';
                     inp.style.background = 'var(--bg-dark)';
@@ -1573,25 +2517,24 @@
                     valueDisplay.style.fontWeight = '600';
                     
                     // Determinar unidade baseada na chave do campo
-                    const unit = f.key === 'iconRotation' ? '°' : '%';
+                    const unit = f.key === 'iconRotation' || f.key === 'gaugeRotation' ? '°' : '%';
                     valueDisplay.textContent = inp.value + unit;
 
                     inp.addEventListener('input', () => {
                         valueDisplay.textContent = inp.value + unit;
-                        // Atualizar elemento em tempo real para campos de rotação
-                        if (f.key === 'iconRotation') {
-                            elements[idx][f.key] = parseFloat(inp.value);
-                            renderEditMode();
-                        }
+                        // update value live for any range fields so preview reacts as user slides
+                        elements[idx][f.key] = parseFloat(inp.value);
+                        try { updatePreviewForElement(idx); } catch (err) {}
                     });
 
                     row.appendChild(lbl);
                     row.appendChild(inp);
                     row.appendChild(valueDisplay);
-                    leftContent.appendChild(row);
+                    targetPane.appendChild(row);
 
                     inp.addEventListener('change', () => {
                         elements[idx][f.key] = parseFloat(inp.value);
+                        try { updatePreviewForElement(idx); } catch (err) {}
                     });
                     return;
                 } else {
@@ -1617,12 +2560,92 @@
                     } else {
                         v = inp.value;
                     }
-                    elements[idx][f.key] = v;
+
+                    // If editing the ID, ensure uniqueness and non-empty
+                    if (f.key === 'id') {
+                        const newId = String(v).trim();
+                        if (!newId) {
+                            alert('ID não pode ser vazio');
+                            inp.value = elements[idx].id || ('elem_' + Date.now());
+                            return;
+                        }
+                        const duplicate = elements.some((el, i2) => i2 !== idx && el.id === newId);
+                        if (duplicate) {
+                            alert('ID já existe. Use um ID único.');
+                            inp.value = elements[idx].id || ('elem_' + Date.now());
+                            return;
+                        }
+                        elements[idx].id = newId;
+                        // Re-render editor to reflect ID change (and update option lists)
+                        renderEditMode();
+                        return;
+                    }
+
+                    // prevent using itself as a source (would create circular reference / confused config)
+                    if (f.key === 'sourceElementId' && v === elements[idx].id) {
+                        alert('Não é possível usar o mesmo elemento como fonte. Selecione outro.');
+                        if (typeof setDataSource === 'function') setDataSource('element', null);
+                        else elements[idx].sourceElementId = null;
+                        showEditPanel(idx);
+                        return;
+                    }
+
+                    // If this is a data source field and a centralized setter exists use it so sources remain exclusive
+                    if ((f.key === 'fieldId' || f.key === 'sourceElementId') && typeof setDataSource === 'function') {
+                        if (f.key === 'fieldId') setDataSource('field', v || null);
+                        else setDataSource('element', v || null);
+                    } else {
+                        elements[idx][f.key] = v;
+                    }
+                    try { updatePreviewForElement(idx); } catch (err) {}
+
+                    // If type changed, re-open the editor for this element so fields update to new type
+                    if (f.key === 'type') {
+                        // Re-render the edit panel to show type-specific controls
+                        showEditPanel(idx);
+                        return;
+                    }
+                    
+                    // Montar dangerZone se for gauge e houver dangerStart/dangerEnd
+                    if (e.type === 'gauge' && (f.key === 'dangerStart' || f.key === 'dangerEnd' || f.key === 'dangerColor')) {
+                        if (elements[idx].dangerStart != null && elements[idx].dangerEnd != null) {
+                            elements[idx].dangerZone = {
+                                start: elements[idx].dangerStart,
+                                end: elements[idx].dangerEnd,
+                                color: elements[idx].dangerColor || '#FF4444'
+                            };
+                        } else {
+                            elements[idx].dangerZone = null;
+                        }
+                    }
+
+                    // Montar warningZone (faixa amarela) se configurada
+                    if (e.type === 'gauge' && (f.key === 'warningStart' || f.key === 'warningEnd' || f.key === 'warningColor')) {
+                        if (elements[idx].warningStart != null && elements[idx].warningEnd != null) {
+                            elements[idx].warningZone = {
+                                start: elements[idx].warningStart,
+                                end: elements[idx].warningEnd,
+                                color: elements[idx].warningColor || '#FFD54F'
+                            };
+                        } else {
+                            elements[idx].warningZone = null;
+                        }
+                    }
                 });
 
                 row.appendChild(lbl);
                 row.appendChild(inp);
-                leftContent.appendChild(row);
+                targetPane.appendChild(row);
+
+                // add immediate input -> live preview for text/number/color fields (but skip ID editing immediate update because of uniqueness checks)
+                if (f.key !== 'id' && (f.type === 'number' || f.type === 'text' || f.type === 'color')) {
+                    inp.addEventListener('input', () => {
+                        let iv = inp.value;
+                        if (f.type === 'number') iv = parseFloat(iv) || 0;
+                        elements[idx][f.key] = iv;
+                        try { updatePreviewForElement(idx); } catch (err) {}
+                    });
+                }
 
                 // Se for campo de ícone, adicionar seletor visual
                 if (f.key === 'icon') {
@@ -1687,7 +2710,7 @@
                     });
 
                     iconPickerContainer.appendChild(iconGrid);
-                    leftContent.appendChild(iconPickerContainer);
+                    panes.visual.appendChild(iconPickerContainer);
                 }
             });
 
@@ -1709,46 +2732,21 @@
 
                 conditionSection.appendChild(condTitle);
 
-                // Source: Gauge ou outro elemento
-                const sourceLabel = document.createElement('label');
-                sourceLabel.style.color = 'var(--text-light)';
-                sourceLabel.style.fontSize = '12px';
-                sourceLabel.style.fontWeight = '600';
-                sourceLabel.style.display = 'block';
-                sourceLabel.style.marginBottom = '6px';
-                sourceLabel.textContent = 'Fonte (Elemento):';
-                conditionSection.appendChild(sourceLabel);
-
-                const sourceSelect = document.createElement('select');
-                sourceSelect.style.width = '100%';
-                sourceSelect.style.padding = '6px 8px';
-                sourceSelect.style.background = 'var(--bg-dark)';
-                sourceSelect.style.border = '1px solid var(--border-color)';
-                sourceSelect.style.color = 'var(--text-light)';
-                sourceSelect.style.borderRadius = '4px';
-                sourceSelect.style.marginBottom = '12px';
-
-                const noneOption = document.createElement('option');
-                noneOption.value = '';
-                noneOption.textContent = '--- Nenhuma (usar valor direto) ---';
-                sourceSelect.appendChild(noneOption);
-
-                // Adicionar opções de elementos (apenas gauge e bar)
-                elements.forEach((elem, i) => {
-                    if ((elem.type === 'gauge' || elem.type === 'bar' || elem.type === 'bar-marker') && i !== idx) {
-                        const opt = document.createElement('option');
-                        opt.value = elem.id;
-                        opt.textContent = `${elem.label || elem.id} (${elem.type})`;
-                        opt.selected = e.sourceElementId === elem.id;
-                        sourceSelect.appendChild(opt);
+                // Show read-only reminder: the LED uses the data-source configured in the Values tab above
+                const sourceNote = document.createElement('div');
+                sourceNote.style.fontSize = '12px';
+                sourceNote.style.color = 'var(--text-light)';
+                sourceNote.style.marginBottom = '8px';
+                const currentSourceLabel = (() => {
+                    if (e.fieldId) return `Campo CommonInfo: ${e.fieldId}`;
+                    if (e.sourceElementId) {
+                        const sElem = elements.find(x => x.id === e.sourceElementId);
+                        return sElem ? `Outro elemento: ${sElem.label || sElem.id} (${sElem.type})` : `Outro elemento: ${e.sourceElementId}`;
                     }
-                });
-
-                sourceSelect.addEventListener('change', () => {
-                    elements[idx].sourceElementId = sourceSelect.value || null;
-                });
-
-                conditionSection.appendChild(sourceSelect);
+                    return 'Valor fixo (usando valor do próprio elemento)';
+                })();
+                sourceNote.textContent = `Fonte de valor configurada: ${currentSourceLabel} — use a aba "Valores" para mudar a fonte.`;
+                conditionSection.appendChild(sourceNote);
 
                 // Operador
                 const opLabel = document.createElement('label');
@@ -1818,7 +2816,76 @@
 
                 conditionSection.appendChild(thresholdInput);
 
-                leftContent.appendChild(conditionSection);
+                // Append LED condition controls into the 'Valores' tab so value-mechanism lives together
+                panes.values.appendChild(conditionSection);
+            }
+
+            // ===== SEÇÃO DE CONDIÇÕES PARA TEXTOS CONDICIONAIS =====
+            if (e.type === 'conditional-text') {
+                const condWrap = document.createElement('div');
+                condWrap.style.padding = '12px';
+                condWrap.style.border = '1px solid rgba(120,120,120,0.08)';
+                condWrap.style.borderRadius = '6px';
+                condWrap.style.marginBottom = '12px';
+
+                const condTitle = document.createElement('div');
+                condTitle.textContent = 'Condições (conditional-text)';
+                condTitle.style.fontWeight = '700';
+                condTitle.style.color = 'var(--light-red)';
+                condTitle.style.marginBottom = '8px';
+                condWrap.appendChild(condTitle);
+
+                const list = document.createElement('div');
+                list.style.display = 'flex';
+                list.style.flexDirection = 'column';
+                list.style.gap = '8px';
+
+                function renderConditions() {
+                    list.innerHTML = '';
+                    const conds = Array.isArray(elements[idx].conditions) ? elements[idx].conditions : [];
+                    conds.forEach((c, ci) => {
+                        const row = document.createElement('div');
+                        row.style.display = 'grid';
+                        row.style.gridTemplateColumns = 'auto auto 1fr auto auto';
+                        row.style.gap = '8px';
+
+                        const opSelect = document.createElement('select');
+                        ['>=','>','<=','<','==','!='].forEach(o => { const oEl = document.createElement('option'); oEl.value = o; oEl.textContent = o; if (c.operator === o) oEl.selected = true; opSelect.appendChild(oEl); });
+                        const thr = document.createElement('input'); thr.type = 'number'; thr.value = c.threshold || 0; thr.style.padding = '6px'; thr.style.background='var(--bg-dark)'; thr.style.color='var(--text-light)';
+                        const txt = document.createElement('input'); txt.type = 'text'; txt.value = c.text || ''; txt.style.padding = '6px'; txt.style.background='var(--bg-dark)'; txt.style.color='var(--text-light)';
+                        const color = document.createElement('input'); color.type = 'color'; color.value = c.color || '#ffffff';
+                        const rem = document.createElement('button'); rem.textContent = '✕'; rem.title = 'Remover condição'; rem.style.background='transparent'; rem.style.border='1px solid var(--border-color)'; rem.style.borderRadius='4px'; rem.style.color='var(--text-light)';
+
+                        opSelect.addEventListener('change', () => { elements[idx].conditions[ci].operator = opSelect.value; try { updatePreviewForElement(idx); } catch (err) {} });
+                        thr.addEventListener('input', () => { elements[idx].conditions[ci].threshold = parseFloat(thr.value) || 0; try { updatePreviewForElement(idx); } catch (err) {} });
+                        txt.addEventListener('input', () => { elements[idx].conditions[ci].text = txt.value; try { updatePreviewForElement(idx); } catch (err) {} });
+                        color.addEventListener('change', () => { elements[idx].conditions[ci].color = color.value; try { updatePreviewForElement(idx); } catch (err) {} });
+                        rem.addEventListener('click', () => { elements[idx].conditions.splice(ci,1); renderConditions(); try { updatePreviewForElement(idx); } catch (err) {} });
+
+                        row.appendChild(opSelect); row.appendChild(thr); row.appendChild(txt); row.appendChild(color); row.appendChild(rem);
+                        list.appendChild(row);
+                    });
+                }
+
+                const addBtnCond = document.createElement('button');
+                addBtnCond.textContent = '+ Adicionar condição';
+                addBtnCond.style.marginTop = '8px';
+                addBtnCond.style.padding = '8px';
+                addBtnCond.style.border = 'none';
+                addBtnCond.style.background = 'var(--primary-red)';
+                addBtnCond.style.color = 'white';
+                addBtnCond.style.borderRadius = '6px';
+                addBtnCond.addEventListener('click', () => {
+                    elements[idx].conditions = elements[idx].conditions || [];
+                    elements[idx].conditions.push({ operator: '>=', threshold: 0, text: 'Novo', color: '#ffffff' });
+                    renderConditions();
+                    try { updatePreviewForElement(idx); } catch (err) {}
+                });
+
+                condWrap.appendChild(list);
+                condWrap.appendChild(addBtnCond);
+                panes.values.appendChild(condWrap);
+                renderConditions();
             }
         };
 
@@ -1845,7 +2912,7 @@
             typeSelect.style.background = 'var(--bg-dark)';
             typeSelect.style.color = 'var(--text-light)';
             
-            ['gauge', 'bar', 'bar-marker', 'led', 'text', 'conditional-text', 'button'].forEach(t => {
+            ['gauge', 'bar', 'bar-marker', 'led', 'text', 'conditional-text', 'button', 'digital'].forEach(t => {
                 const opt = document.createElement('option');
                 opt.value = t;
                 opt.textContent = t;
@@ -1873,7 +2940,7 @@
             cancelBtn.style.cursor = 'pointer';
             cancelBtn.style.marginLeft = '4%';
 
-            confirmBtn.addEventListener('click', () => {
+                confirmBtn.addEventListener('click', () => {
                 const type = typeSelect.value;
                 const baseConfig = {
                     id: 'elem_' + Date.now(),
@@ -1891,6 +2958,8 @@
                     newElem = { ...baseConfig, value: 0, threshold: 500, color: '#00FF00', colorOff: '#333333', blink: false, blinkRate: 500, sizeScale: 100 };
                 } else if (type === 'text') {
                     newElem = { ...baseConfig, text: 'Novo Texto', fontSize: 14, fontWeight: '400', color: 'var(--text-light)' };
+                } else if (type === 'digital') {
+                    newElem = { ...baseConfig, value: 0, min: 0, max: 9999, unit: '', sizeScale: 100, color: '#00ff88' };
                 } else if (type === 'conditional-text') {
                     newElem = { ...baseConfig, value: 0, fontSize: 16, fontWeight: '600', conditions: [] };
                 } else if (type === 'button') {
@@ -1905,7 +2974,10 @@
                 }
 
                 elements.push(newElem);
+                // re-render and open editor for the newly created element
                 renderEditMode();
+                // ensure we open the editor for the element just added (last index)
+                try { showEditPanel(elements.length - 1); } catch (err) {}
             });
 
             cancelBtn.addEventListener('click', () => {
@@ -1946,15 +3018,297 @@
         }
     }
 
-    function openModal(editModeFlag = false) {
-        if (!modal) return;
-        editMode = editModeFlag;
+    function createEditModalIfNeeded() {
+        if (editModal && editContainer) return;
+        // build edit modal DOM
+        editModal = document.createElement('div');
+        editModal.id = 'dashboardConfigModal';
+        editModal.className = 'dashboard-modal';
 
-        // Show/hide footer BEFORE rendering content
-        const footer = document.getElementById('dashboard-edit-footer');
-        if (footer) {
-            footer.style.display = editMode ? 'flex' : 'none';
-        }
+        const frame = document.createElement('div');
+        frame.className = 'dashboard-frame';
+        frame.setAttribute('data-edit-mode', 'true');
+
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'dashboard-close';
+        closeBtn.id = 'dashboardConfigCloseBtn';
+        closeBtn.setAttribute('aria-label', 'Fechar');
+        closeBtn.textContent = '✕';
+
+        const content = document.createElement('div');
+        content.className = 'dashboard-content';
+        content.id = 'dashboardConfigContent';
+
+        frame.appendChild(closeBtn);
+        frame.appendChild(content);
+        editModal.appendChild(frame);
+        document.body.appendChild(editModal);
+
+        editContainer = content;
+
+        // footer with revert/save
+        const footer = document.createElement('div');
+        footer.id = 'dashboard-edit-footer';
+        footer.style.position = 'absolute';
+        footer.style.bottom = '0';
+        footer.style.left = '0';
+        footer.style.right = '0';
+        footer.style.height = '60px';
+        footer.style.display = 'none';
+        footer.style.background = 'rgba(0,0,0,0.7)';
+        footer.style.borderTop = '1px solid var(--border-color)';
+        footer.style.padding = '10px 20px';
+        footer.style.justifyContent = 'flex-end';
+        footer.style.gap = '10px';
+        footer.style.alignItems = 'center';
+
+        const revertBtn = document.createElement('button');
+        revertBtn.textContent = 'Reverter';
+        revertBtn.style.padding = '8px 16px';
+        revertBtn.style.background = 'var(--border-color)';
+        revertBtn.style.border = 'none';
+        revertBtn.style.color = 'var(--text-light)';
+        revertBtn.style.borderRadius = '4px';
+        revertBtn.style.cursor = 'pointer';
+        revertBtn.addEventListener('click', () => {
+            if (backupElements) {
+                elements = JSON.parse(JSON.stringify(backupElements));
+            }
+            closeModal();
+        });
+
+        const genBtn = document.createElement('button');
+        genBtn.textContent = 'Gerar & Copiar';
+        genBtn.style.padding = '8px 14px';
+        genBtn.style.background = 'linear-gradient(90deg, #444, #222)';
+        genBtn.style.border = '1px solid var(--border-color)';
+        genBtn.style.color = 'var(--text-light)';
+        genBtn.style.borderRadius = '4px';
+        genBtn.style.cursor = 'pointer';
+        genBtn.addEventListener('click', () => {
+            const modalId = 'dsw-share-modal-footer';
+            let existing = document.getElementById(modalId);
+            if (existing) existing.remove();
+
+            const overlay = document.createElement('div');
+            overlay.id = modalId;
+            overlay.style.position = 'fixed';
+            overlay.style.left = '0';
+            overlay.style.top = '0';
+            overlay.style.right = '0';
+            overlay.style.bottom = '0';
+            overlay.style.display = 'flex';
+            overlay.style.alignItems = 'center';
+            overlay.style.justifyContent = 'center';
+            overlay.style.background = 'rgba(0,0,0,0.6)';
+            overlay.style.zIndex = '20000';
+
+            const panel = document.createElement('div');
+            panel.style.width = 'min(880px, 92%)';
+            panel.style.maxWidth = '920px';
+            panel.style.background = 'var(--bg-darker)';
+            panel.style.border = '1px solid var(--border-color)';
+            panel.style.borderRadius = '10px';
+            panel.style.padding = '18px';
+            panel.style.boxShadow = '0 8px 36px rgba(0,0,0,0.6)';
+
+            const h = document.createElement('div');
+            h.textContent = 'Código único (uma linha)';
+            h.style.fontWeight = '700';
+            h.style.color = 'var(--light-red)';
+            h.style.marginBottom = '10px';
+            panel.appendChild(h);
+
+            const codeInput = document.createElement('input');
+            codeInput.type = 'text';
+            codeInput.readOnly = true;
+            codeInput.style.width = '100%';
+            codeInput.style.padding = '10px';
+            codeInput.style.background = 'var(--bg-dark)';
+            codeInput.style.border = '1px solid var(--border-color)';
+            codeInput.style.color = 'var(--text-light)';
+            codeInput.style.borderRadius = '6px';
+            codeInput.style.fontFamily = 'monospace';
+            codeInput.style.overflow = 'hidden';
+            codeInput.style.textOverflow = 'ellipsis';
+
+            const code = generateShareCode();
+            codeInput.value = code;
+            panel.appendChild(codeInput);
+
+            const info = document.createElement('div');
+            info.style.fontSize = '12px';
+            info.style.color = 'var(--text-light)';
+            info.style.marginTop = '8px';
+            info.textContent = 'Após copiar, compartilhe este código com um amigo para que ele tenha exatamente o mesmo painel.';
+            panel.appendChild(info);
+
+            const row = document.createElement('div');
+            row.style.display = 'flex';
+            row.style.gap = '8px';
+            row.style.marginTop = '12px';
+            row.style.justifyContent = 'flex-end';
+
+            const copyBtn2 = document.createElement('button');
+            copyBtn2.textContent = 'Copiar';
+            copyBtn2.style.padding = '8px 12px';
+            copyBtn2.style.background = 'var(--primary-red)';
+            copyBtn2.style.border = 'none';
+            copyBtn2.style.color = 'white';
+            copyBtn2.style.borderRadius = '6px';
+            copyBtn2.style.cursor = 'pointer';
+            copyBtn2.addEventListener('click', async () => {
+                try { await navigator.clipboard.writeText(codeInput.value); } catch (err) {
+                    const ta = document.createElement('textarea'); ta.value = codeInput.value; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+                }
+                copyBtn2.textContent = 'Copiado ✓';
+                setTimeout(() => { copyBtn2.textContent = 'Copiar'; }, 1500);
+            });
+
+            const closeBtn2 = document.createElement('button');
+            closeBtn2.textContent = 'Fechar';
+            closeBtn2.style.padding = '8px 12px';
+            closeBtn2.style.background = 'var(--border-color)';
+            closeBtn2.style.border = 'none';
+            closeBtn2.style.color = 'var(--text-light)';
+            closeBtn2.style.borderRadius = '6px';
+            closeBtn2.style.cursor = 'pointer';
+            closeBtn2.addEventListener('click', () => overlay.remove());
+
+            row.appendChild(closeBtn2);
+            row.appendChild(copyBtn2);
+            panel.appendChild(row);
+
+            overlay.appendChild(panel);
+            document.body.appendChild(overlay);
+        });
+
+        const loadBtn = document.createElement('button');
+        loadBtn.textContent = 'Carregar Configuração';
+        loadBtn.style.padding = '8px 14px';
+        loadBtn.style.background = 'var(--border-color)';
+        loadBtn.style.border = '1px solid var(--border-color)';
+        loadBtn.style.color = 'var(--text-light)';
+        loadBtn.style.borderRadius = '4px';
+        loadBtn.style.cursor = 'pointer';
+        loadBtn.addEventListener('click', () => {
+            const modalId = 'dsw-load-modal-footer';
+            let existing = document.getElementById(modalId);
+            if (existing) existing.remove();
+
+            const overlay = document.createElement('div');
+            overlay.id = modalId;
+            overlay.style.position = 'fixed';
+            overlay.style.left = '0';
+            overlay.style.top = '0';
+            overlay.style.right = '0';
+            overlay.style.bottom = '0';
+            overlay.style.display = 'flex';
+            overlay.style.alignItems = 'center';
+            overlay.style.justifyContent = 'center';
+            overlay.style.background = 'rgba(0,0,0,0.6)';
+            overlay.style.zIndex = '20000';
+
+            const panel = document.createElement('div');
+            panel.style.width = 'min(880px, 92%)';
+            panel.style.maxWidth = '920px';
+            panel.style.background = 'var(--bg-darker)';
+            panel.style.border = '1px solid var(--border-color)';
+            panel.style.borderRadius = '10px';
+            panel.style.padding = '18px';
+            panel.style.boxShadow = '0 8px 36px rgba(0,0,0,0.6)';
+
+            const h = document.createElement('div');
+            h.textContent = 'Carregar configuração (cole o código abaixo)';
+            h.style.fontWeight = '700';
+            h.style.color = 'var(--light-red)';
+            h.style.marginBottom = '10px';
+            panel.appendChild(h);
+
+            const ta = document.createElement('textarea');
+            ta.style.width = '100%';
+            ta.style.minHeight = '120px';
+            ta.style.padding = '10px';
+            ta.style.background = 'var(--bg-dark)';
+            ta.style.border = '1px solid var(--border-color)';
+            ta.style.color = 'var(--text-light)';
+            ta.style.borderRadius = '6px';
+            ta.placeholder = 'Cole aqui o código gerado (ex: DSWCFG1:...) ou JSON...';
+            panel.appendChild(ta);
+
+            const row = document.createElement('div');
+            row.style.display = 'flex';
+            row.style.gap = '8px';
+            row.style.marginTop = '12px';
+            row.style.justifyContent = 'flex-end';
+
+            const importBtn = document.createElement('button');
+            importBtn.textContent = 'Importar';
+            importBtn.style.padding = '8px 12px';
+            importBtn.style.background = 'var(--primary-red)';
+            importBtn.style.border = 'none';
+            importBtn.style.color = 'white';
+            importBtn.style.borderRadius = '6px';
+            importBtn.style.cursor = 'pointer';
+            importBtn.addEventListener('click', () => {
+                const code = ta.value.trim();
+                if (!code) return alert('Cole o código antes de importar');
+                const res = importShareCode(code);
+                if (res.ok) {
+                    saveElements(elements);
+                    // re-render the edit modal content if open
+                    renderEditMode();
+                    overlay.remove();
+                    alert('Configuração importada com sucesso');
+                } else {
+                    alert('Falha ao importar: ' + (res.error || 'erro desconhecido'));
+                }
+            });
+
+            const cancelBtn = document.createElement('button');
+            cancelBtn.textContent = 'Cancelar';
+            cancelBtn.style.padding = '8px 12px';
+            cancelBtn.style.background = 'var(--border-color)';
+            cancelBtn.style.border = 'none';
+            cancelBtn.style.color = 'var(--text-light)';
+            cancelBtn.style.borderRadius = '6px';
+            cancelBtn.style.cursor = 'pointer';
+            cancelBtn.addEventListener('click', () => overlay.remove());
+
+            row.appendChild(cancelBtn);
+            row.appendChild(importBtn);
+            panel.appendChild(row);
+
+            overlay.appendChild(panel);
+            document.body.appendChild(overlay);
+        });
+
+        const saveBtn = document.createElement('button');
+        saveBtn.textContent = 'Salvar';
+        saveBtn.style.padding = '8px 16px';
+        saveBtn.style.background = 'var(--primary-red)';
+        saveBtn.style.border = 'none';
+        saveBtn.style.color = 'white';
+        saveBtn.style.borderRadius = '4px';
+        saveBtn.style.cursor = 'pointer';
+        saveBtn.style.fontWeight = '600';
+        saveBtn.addEventListener('click', () => {
+            saveElements(elements);
+            closeModal();
+        });
+
+        footer.appendChild(revertBtn);
+        footer.appendChild(genBtn);
+        footer.appendChild(loadBtn);
+        footer.appendChild(saveBtn);
+        frame.appendChild(footer);
+
+        // hook close
+        closeBtn.addEventListener('click', closeModal);
+    }
+
+    function openModal(editModeFlag = false) {
+        editMode = !!editModeFlag;
 
         // Hide controls-area when viewing dashboard (only in view mode)
         const controlsArea = document.querySelector('.controls-area');
@@ -1963,27 +3317,60 @@
         }
 
         if (editMode) {
+            // create separate edit modal if needed
+            createEditModalIfNeeded();
             backupElements = JSON.parse(JSON.stringify(elements));
+            container = editContainer;
+            modal = editModal;
+            // show footer
+            const footer = document.getElementById('dashboard-edit-footer');
+            if (footer) footer.style.display = 'flex';
             renderEditMode();
+            // mark frames
+            const viewFrame = viewModal && viewModal.querySelector('.dashboard-frame');
+            if (viewFrame) viewFrame.removeAttribute('data-edit-mode');
+            const editFrame = editModal && editModal.querySelector('.dashboard-frame');
+            if (editFrame) editFrame.setAttribute('data-edit-mode', 'true');
         } else {
+            // view mode
+            container = viewContainer;
+            modal = viewModal;
             renderViewMode();
+            // ensure edit modal footer hidden if exists
+            const footer = document.getElementById('dashboard-edit-footer');
+            if (footer) footer.style.display = 'none';
+            const viewFrame = viewModal && viewModal.querySelector('.dashboard-frame');
+            if (viewFrame) viewFrame.removeAttribute('data-edit-mode');
         }
 
-        modal.setAttribute('aria-hidden', 'false');
+        if (modal) {
+            modal.setAttribute('aria-hidden', 'false');
+            document.body.classList.add('dashboard-open');
+        }
+    }
+
+    // Presentation (view-only) modal functions - totally separate from edit modal
+    function openPresentationModal() {
+        if (!viewModal || !viewContainer) return;
+        // render into the view container (dashboardContent)
+        renderViewMode(viewContainer);
+        viewModal.setAttribute('aria-hidden', 'false');
         document.body.classList.add('dashboard-open');
+    }
+
+    function closePresentationModal() {
+        if (!viewModal) return;
+        viewModal.setAttribute('aria-hidden', 'true');
+        document.body.classList.remove('dashboard-open');
+        if (viewContainer) viewContainer.innerHTML = '';
+        Object.keys(blinkIntervals).forEach(id => stopBlinking(id));
     }
 
     function closeModal() {
         if (!modal) return;
-        editMode = false;
+        // hide active modal
         modal.setAttribute('aria-hidden', 'true');
         document.body.classList.remove('dashboard-open');
-
-        // Ensure footer is hidden on close
-        const footer = document.getElementById('dashboard-edit-footer');
-        if (footer) {
-            footer.style.display = 'none';
-        }
 
         // Restore controls-area visibility
         const controlsArea = document.querySelector('.controls-area');
@@ -1993,6 +3380,25 @@
 
         // Stop all blinks
         Object.keys(blinkIntervals).forEach(id => stopBlinking(id));
+
+        // if we are closing edit modal, remove it from DOM and restore view as active container
+        if (modal === editModal) {
+            editMode = false;
+            // remove edit modal from DOM
+            try {
+                if (editModal && editModal.parentNode) editModal.parentNode.removeChild(editModal);
+            } catch (err) {}
+            editModal = null;
+            editContainer = null;
+            // restore references to view modal
+            container = viewContainer;
+            modal = viewModal;
+        } else {
+            // closing view modal
+            editMode = false;
+            container = viewContainer;
+            modal = viewModal;
+        }
     }
 
     // Handle single vs double click vs long press (works on both mouse and touch)
@@ -2099,13 +3505,13 @@
 
             if (clickCount === 1) {
                 clickTimer = setTimeout(() => {
-                    // Single click - abre dashboard em view mode
-                    openModal(false);
+                    // Single click - open presentation modal (separate)
+                    openPresentationModal();
                     clickCount = 0;
                 }, 300);
             } else if (clickCount === 2) {
                 clearTimeout(clickTimer);
-                // Double click - abre dashboard em edit mode
+                // Double click - abre dashboard em edit mode (config)
                 openModal(true);
                 clickCount = 0;
             }
@@ -2143,57 +3549,13 @@
         btnClose.addEventListener('click', closeModal);
     }
 
-    // Create footer with Revert/Save (only visible in edit mode)
-    const dashboardFrame = document.querySelector('.dashboard-frame');
-    if (dashboardFrame) {
-        const footer = document.createElement('div');
-        footer.id = 'dashboard-edit-footer';
-        footer.style.position = 'absolute';
-        footer.style.bottom = '0';
-        footer.style.left = '0';
-        footer.style.right = '0';
-        footer.style.height = '60px';
-        footer.style.display = 'none';
-        footer.style.background = 'rgba(0,0,0,0.7)';
-        footer.style.borderTop = '1px solid var(--border-color)';
-        footer.style.padding = '10px 20px';
-        footer.style.justifyContent = 'flex-end';
-        footer.style.gap = '10px';
-        footer.style.alignItems = 'center';
-
-        const revertBtn = document.createElement('button');
-        revertBtn.textContent = 'Reverter';
-        revertBtn.style.padding = '8px 16px';
-        revertBtn.style.background = 'var(--border-color)';
-        revertBtn.style.border = 'none';
-        revertBtn.style.color = 'var(--text-light)';
-        revertBtn.style.borderRadius = '4px';
-        revertBtn.style.cursor = 'pointer';
-        revertBtn.addEventListener('click', () => {
-            if (backupElements) {
-                elements = JSON.parse(JSON.stringify(backupElements));
-            }
-            closeModal();
-        });
-
-        const saveBtn = document.createElement('button');
-        saveBtn.textContent = 'Salvar';
-        saveBtn.style.padding = '8px 16px';
-        saveBtn.style.background = 'var(--primary-red)';
-        saveBtn.style.border = 'none';
-        saveBtn.style.color = 'white';
-        saveBtn.style.borderRadius = '4px';
-        saveBtn.style.cursor = 'pointer';
-        saveBtn.style.fontWeight = '600';
-        saveBtn.addEventListener('click', () => {
-            saveElements(elements);
-            closeModal();
-        });
-
-        footer.appendChild(revertBtn);
-        footer.appendChild(saveBtn);
-        dashboardFrame.appendChild(footer);
+    // presentation modal close button (if exists)
+    const btnViewClose = document.getElementById('dashboardViewCloseBtn');
+    if (btnViewClose) {
+        btnViewClose.addEventListener('click', closePresentationModal);
     }
+
+    // Footer is created inside the edit modal by createEditModalIfNeeded().
 
     // expose API
     window.DashboardElements = {
@@ -2217,7 +3579,11 @@
         getAll: () => elements,
         getElement: (id) => elements.find(e => e.id === id),
         openModal,
-        closeModal
+        closeModal,
+        openPresentationModal,
+        closePresentationModal,
+        generateShareCode,
+        importShareCode
     };
 
     if (modal && modal.getAttribute('aria-hidden') === 'false') {

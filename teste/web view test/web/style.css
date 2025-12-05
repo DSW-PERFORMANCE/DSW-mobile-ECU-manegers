@@ -1802,6 +1802,9 @@ input[type="number"]:focus {
     width: 100%;
     flex: 1;
     min-height: 300px;
+    /* Ensure horizontal scroll on small screens */
+    overflow-x: auto;
+    overflow-y: auto;
 }
 
 .table3d-main {
@@ -2433,6 +2436,7 @@ input[type="number"]:focus {
     overflow: hidden; /* no scroll allowed */
     -webkit-overflow-scrolling: auto;
     display: block;
+    background: linear-gradient(135deg, rgba(0,0,0,0.3) 0%, rgba(15,15,15,0.6) 100%);
 }
 
 /* Marker visual elements inside dashboard */
@@ -2442,6 +2446,25 @@ input[type="number"]:focus {
     touch-action: none;
     cursor: grab;
     user-select: none;
+    filter: drop-shadow(0 4px 12px rgba(139, 0, 0, 0.4));
+    transition: filter 0.3s ease;
+}
+
+/* In view mode the dashboard-frame does NOT have data-edit-mode="true".
+   Use top-left positioning so 0%..100% map to the modal bounds and elements never overflow.
+*/
+.dashboard-frame:not([data-edit-mode="true"]) .dashboard-content .dashboard-marker {
+    transform: translate(0, 0) !important;
+}
+
+/* In edit mode keep the centered transform for dragging (marker centered on its position).
+*/
+.dashboard-frame[data-edit-mode="true"] .dashboard-content .dashboard-marker {
+    transform: translate(-50%, -50%) !important;
+}
+
+.dashboard-marker:hover {
+    filter: drop-shadow(0 6px 20px rgba(139, 0, 0, 0.6));
 }
 
 .dashboard-marker .marker-label {
@@ -2450,14 +2473,18 @@ input[type="number"]:focus {
     font-weight: 700;
     text-shadow: 0 2px 6px rgba(0,0,0,0.7);
     pointer-events: none;
+    font-size: 0.75em;
+    letter-spacing: 0.5px;
 }
 
 .dashboard-marker .marker-value {
     display: block;
     color: var(--light-red);
     font-weight: 900;
-    font-size: 1.05em;
+    font-size: 1.3em;
     pointer-events: none;
+    text-shadow: 0 0 8px rgba(139, 0, 0, 0.6);
+    letter-spacing: 1px;
 }
 
 /* Ensure widgets area children don't escape bounds */
@@ -2492,5 +2519,146 @@ body.dashboard-open {
 
 .dashboard-frame[data-edit-mode="true"] .dashboard-content {
     padding-bottom: 80px;
+}
+
+/* Enhanced Dashboard Visual Styles */
+.dashboard-marker svg {
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+}
+
+/* Gauge specific enhancements */
+.dashboard-marker svg circle[fill*="radial"] {
+    filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.5));
+}
+
+/* LED enhancements for better visibility */
+.dashboard-marker div[style*="radial-gradient"] {
+    transition: all 0.2s ease;
+}
+
+/* Smooth transitions for bar fills */
+.dashboard-marker div[style*="background"] div {
+    transition: width 0.3s ease, box-shadow 0.2s ease;
+}
+
+/* Enhanced responsive layout for small screens */
+@media (max-width: 768px) {
+    .dashboard-marker {
+        transform: translate(-50%, -50%) scale(0.9);
+    }
+    
+    .dashboard-marker:hover {
+        transform: translate(-50%, -50%) scale(0.95);
+    }
+    
+    .dashboard-marker .marker-label {
+        font-size: 0.65em;
+    }
+    
+    .dashboard-marker .marker-value {
+        font-size: 1.15em;
+    }
+}
+
+@media (max-width: 480px) {
+    .dashboard-marker {
+        transform: translate(-50%, -50%) scale(0.8);
+    }
+    
+    .dashboard-marker:hover {
+        transform: translate(-50%, -50%) scale(0.85);
+    }
+}
+
+/* Gauge icon on the side */
+.gauge-icon-side {
+    animation: glow-pulse 2s ease-in-out infinite;
+}
+
+/* Gauge icon centered in middle */
+.gauge-icon-center {
+    animation: glow-pulse 2s ease-in-out infinite;
+}
+
+@keyframes glow-pulse {
+    0%, 100% {
+        filter: drop-shadow(0 0 4px rgba(139, 0, 0, 0.6));
+    }
+    50% {
+        filter: drop-shadow(0 0 8px rgba(139, 0, 0, 0.9));
+    }
+}
+
+/* Gauge marker specific styles */
+.gauge-marker {
+    position: relative;
+}
+
+/* Bar marker with flex layout */
+.bar-marker {
+    position: relative;
+}
+
+/* LED marker */
+.led-marker {
+    position: relative;
+}
+
+/* ===== RESPONSIVE DASHBOARD SIZING ===== */
+/* Elementos se redimensionam automaticamente com a tela */
+#dashboardContent {
+    --dashboard-scale: 1;
+}
+
+/* Extra small devices */
+@media (max-width: 480px) {
+    #dashboardContent {
+        --dashboard-scale: 0.7;
+    }
+}
+
+/* Small devices */
+@media (max-width: 768px) {
+    #dashboardContent {
+        --dashboard-scale: 0.85;
+    }
+}
+
+/* Medium devices */
+@media (max-width: 1024px) {
+    #dashboardContent {
+        --dashboard-scale: 0.95;
+    }
+}
+
+/* Large devices (default) */
+@media (min-width: 1920px) {
+    #dashboardContent {
+        --dashboard-scale: 1.2;
+    }
+}
+
+/* Extra large devices */
+@media (min-width: 2560px) {
+    #dashboardContent {
+        --dashboard-scale: 1.5;
+    }
+}
+
+/* Dashboard container responsivo */
+.dashboard-marker,
+.gauge-marker,
+.bar-marker,
+.led-marker {
+    transform: translate(-50%, -50%) scale(var(--dashboard-scale));
+    transform-origin: center;
+    transition: transform 0.2s ease;
+}
+
+/* Responsividade do SVG dos gauges */
+.dashboard-marker svg,
+.gauge-marker svg {
+    width: 100%;
+    height: 100%;
 }
 

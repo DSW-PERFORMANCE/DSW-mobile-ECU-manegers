@@ -24,8 +24,8 @@
         lastFetchTime: null,
         fetchCount: 0,
         
-        // Callbacks
-        onDataReceived: null,
+        // Callbacks / subscribers
+        _listeners: new Set(),
         
         /**
          * Inicializa o sistema de coleta de dados comuns
@@ -79,17 +79,25 @@
          * Inicializa objeto de dados com valores padrão
          */
         initializeDataObject() {
-            if (!this.config || !this.config.dataFields) return;
-            
-            this.config.dataFields.forEach(field => {
-                this.data[field.id] = {
-                    value: null,
-                    title: field.title,
-                    unit: field.unit,
-                    type: field.type,
-                    format: field.format,
-                    timestamp: null
-                };
+            // If there is a config with dataFields, initialize accordingly
+            if (this.config && Array.isArray(this.config.dataFields) && this.config.dataFields.length) {
+                this.config.dataFields.forEach(field => {
+                    this.data[field.id] = {
+                        value: null,
+                        title: field.title,
+                        unit: field.unit,
+                        type: field.type,
+                        format: field.format,
+                        timestamp: null
+                    };
+                });
+                return;
+            }
+
+            // Fallback: criar campos padrão que a ECU costuma enviar (ordem fixa conhecida)
+            const defaultFields = ['rpm','dutyCycle','injectionTime','map','temp_eng','lambdaGeral','gamaper','tps','press_oleoValue','batteryVoltage','dwell_atual','avanco_igni','etc_input'];
+                defaultFields.forEach(f => {
+                if (!this.data[f]) this.data[f] = { value: null, title: f, unit: '', type: 'number', format: null, timestamp: null };
             });
         },
         
@@ -124,15 +132,7 @@
          * Configura monitoramento de operações prioritárias
          */
         setupPriorityMonitoring() {
-            // Expõe métodos para pausa/resume de polling
-            window.CommonInfo = {
-                pausePolling: () => this.pausePolling(),
-                resumePolling: () => this.resumePolling(),
-                isPaused: () => this.isPaused,
-                getData: () => this.getFormattedData(),
-                getRawData: () => this.data
-            };
-            
+            // Não substituir window.CommonInfo — expor métodos quando o objeto for atribuído globalmente.
             // Monitorar fila de comandos no ecuCommunication
             this.monitorCommandQueue();
         },
@@ -260,34 +260,57 @@
             try {
                 // Dividir por vírgula
                 const values = response.split(',').map(v => v.trim());
-                
-                // Mapear para campos definidos
-                this.config.dataFields.forEach(field => {
-                    const value = values[field.position];
-                    
-                    if (value !== undefined && value !== null) {
-                        const numValue = parseFloat(value);
-                        
-                        if (!isNaN(numValue)) {
-                            this.data[field.id] = {
-                                value: numValue,
-                                title: field.title,
-                                unit: field.unit,
-                                type: field.type,
-                                format: field.format,
-                                timestamp: Date.now(),
-                                raw: value
-                            };
+
+                // Se houver configuração via su.json, usar mapeamento configurado
+                if (this.config && Array.isArray(this.config.dataFields) && this.config.dataFields.length) {
+                    this.config.dataFields.forEach(field => {
+                        const value = values[field.position];
+                        if (value !== undefined && value !== null && value !== '') {
+                            const numValue = parseFloat(value);
+                            if (!isNaN(numValue)) {
+                                this.data[field.id] = {
+                                    value: numValue,
+                                    title: field.title,
+                                    unit: field.unit,
+                                    type: field.type,
+                                    format: field.format,
+                                    timestamp: Date.now(),
+                                    raw: value
+                                };
+                            }
                         }
+                    });
+                } else {
+                    // Fallback: suportar payload padrão que ECU envia (lista fixa conhecida)
+                    // Ordem esperada (exemplo enviado):
+                    const defaultFields = ['rpm','dutyCycle','injectionTime','map','temp_eng','lambdaGeral','gamaper','tps','press_oleoValue','batteryVoltage','dwell_atual','avanco_igni','etc_input'];
+                     for (let i = 0; i < Math.min(values.length, defaultFields.length); i++) {
+                        const raw = values[i];
+                        if (raw === undefined || raw === null || raw === '') continue;
+                        const num = parseFloat(raw);
+                        if (isNaN(num)) continue;
+                        const id = defaultFields[i];
+                        this.data[id] = this.data[id] || {};
+                        this.data[id].value = num;
+                        this.data[id].title = this.data[id].title || id;
+                        this.data[id].unit = this.data[id].unit || '';
+                        this.data[id].type = this.data[id].type || 'number';
+                        this.data[id].format = this.data[id].format || null;
+                        this.data[id].timestamp = Date.now();
+                        this.data[id].raw = raw;
                     }
-                });
+                }
                 
                 this.lastFetchTime = Date.now();
                 
-                // Chamar callback se definido
-                if (this.onDataReceived) {
-                    this.onDataReceived(this.data);
-                }
+                // Notificar todos os inscritos
+                try {
+                    if (this._listeners && this._listeners.size > 0) {
+                        this._listeners.forEach(cb => {
+                            try { cb(this.data); } catch (err) { console.error('[CommonInfo] listener error', err); }
+                        });
+                    }
+                } catch (err) { console.error('[CommonInfo] notify error', err); }
                 
                 console.debug('[CommonInfo] Dados atualizados', {
                     count: this.fetchCount,
@@ -335,14 +358,32 @@
          * Obtém valor específico
          */
         getValue(fieldId) {
-            return this.data[fieldId]?.value || null;
+            if (!fieldId) return undefined;
+            const entry = this.data[fieldId];
+            return entry && entry.value !== undefined ? entry.value : undefined;
         },
         
         /**
          * Configura callback para quando dados forem recebidos
          */
+        // Backwards-compatible: register a listener callback — supports multiple subscribers
         onUpdate(callback) {
-            this.onDataReceived = callback;
+            if (!callback || typeof callback !== 'function') return;
+            this._listeners.add(callback);
+            // return an unsubscribe function
+            return () => { this._listeners.delete(callback); };
+        },
+
+        // explicit add/remove listener helpers
+        addUpdateListener(callback) {
+            if (!callback || typeof callback !== 'function') return false;
+            this._listeners.add(callback);
+            return true;
+        },
+
+        removeUpdateListener(callback) {
+            if (!callback || typeof callback !== 'function') return false;
+            return this._listeners.delete(callback);
         },
         
         /**
