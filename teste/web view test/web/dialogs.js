@@ -618,6 +618,182 @@ class DialogManager {
             }, 10);
         });
     }
+
+    /**
+     * Editar coordenadas de um ponto no gráfico 2D
+     * @param {Object} point - Ponto com {x, y}
+     * @param {number} xMin - Valor mínimo do eixo X
+     * @param {number} xMax - Valor máximo do eixo X
+     * @param {number} yMin - Valor mínimo do eixo Y
+     * @param {number} yMax - Valor máximo do eixo Y
+     * @param {boolean} xLocked - Se X está bloqueado (não editável)
+     * @returns {Promise<Object>} {x, y} ou null se cancelado
+     */
+    async editPointCoordinates(point, xMin, xMax, yMin, yMax, xLocked = false) {
+        return new Promise((resolve) => {
+            const container = document.getElementById('dialogContainer');
+            const backdrop = document.createElement('div');
+            backdrop.className = 'dialog-backdrop';
+
+            const dialog = document.createElement('div');
+            dialog.className = 'dialog';
+
+            const content = document.createElement('div');
+            content.className = 'dialog-content';
+
+            const titleEl = document.createElement('div');
+            titleEl.className = 'dialog-title';
+            titleEl.innerHTML = '<i class="bi bi-pencil-square" style="margin-right:8px;color:#3b82f6;font-size:22px;"></i>Editar Ponto';
+
+            const bodyEl = document.createElement('div');
+            bodyEl.style.padding = '15px 0';
+            bodyEl.style.display = 'flex';
+            bodyEl.style.flexDirection = 'column';
+            bodyEl.style.gap = '15px';
+
+            // Campo X
+            const xFieldDiv = document.createElement('div');
+            xFieldDiv.style.display = 'flex';
+            xFieldDiv.style.flexDirection = 'column';
+            xFieldDiv.style.gap = '6px';
+
+            const xLabel = document.createElement('label');
+            xLabel.textContent = 'Coordenada X';
+            xLabel.style.fontWeight = '600';
+            xLabel.style.color = '#3b82f6';
+
+            const xInput = document.createElement('input');
+            xInput.type = 'number';
+            xInput.value = point.x.toFixed(2);
+            xInput.min = xMin;
+            xInput.max = xMax;
+            xInput.step = '0.01';
+            xInput.disabled = xLocked;
+            xInput.style.padding = '8px';
+            xInput.style.borderRadius = '6px';
+            xInput.style.border = '1.5px solid #3b82f6';
+            xInput.style.fontSize = '15px';
+            xInput.style.background = xLocked ? '#2a2a2a' : '#1a1a1a';
+            xInput.style.color = xLocked ? '#888' : '#fff';
+            xInput.style.cursor = xLocked ? 'not-allowed' : 'text';
+
+            if (xLocked) {
+                xInput.title = 'Coordenada X está bloqueada';
+            }
+
+            xFieldDiv.appendChild(xLabel);
+            xFieldDiv.appendChild(xInput);
+
+            // Campo Y
+            const yFieldDiv = document.createElement('div');
+            yFieldDiv.style.display = 'flex';
+            yFieldDiv.style.flexDirection = 'column';
+            yFieldDiv.style.gap = '6px';
+
+            const yLabel = document.createElement('label');
+            yLabel.textContent = 'Coordenada Y';
+            yLabel.style.fontWeight = '600';
+            yLabel.style.color = '#3b82f6';
+
+            const yInput = document.createElement('input');
+            yInput.type = 'number';
+            yInput.value = point.y.toFixed(2);
+            yInput.min = yMin;
+            yInput.max = yMax;
+            yInput.step = '0.01';
+            yInput.style.padding = '8px';
+            yInput.style.borderRadius = '6px';
+            yInput.style.border = '1.5px solid #3b82f6';
+            yInput.style.fontSize = '15px';
+            yInput.style.background = '#1a1a1a';
+            yInput.style.color = '#fff';
+
+            yFieldDiv.appendChild(yLabel);
+            yFieldDiv.appendChild(yInput);
+
+            bodyEl.appendChild(xFieldDiv);
+            bodyEl.appendChild(yFieldDiv);
+
+            const actions = document.createElement('div');
+            actions.className = 'dialog-actions';
+
+            const cleanup = () => {
+                backdrop.classList.remove('show');
+                setTimeout(() => backdrop.remove(), 300);
+            };
+
+            const cancelBtn = document.createElement('button');
+            cancelBtn.className = 'dialog-btn dialog-btn-cancel';
+            cancelBtn.textContent = 'Cancelar';
+            cancelBtn.addEventListener('click', () => {
+                cleanup();
+                resolve(null);
+            });
+
+            const okBtn = document.createElement('button');
+            okBtn.className = 'dialog-btn dialog-btn-ok';
+            okBtn.textContent = 'OK';
+            okBtn.addEventListener('click', () => {
+                let xValue = xLocked ? point.x : parseFloat(xInput.value);
+                let yValue = parseFloat(yInput.value);
+
+                // Validar valores
+                let valid = true;
+
+                if (!xLocked && (isNaN(xValue) || xValue < xMin || xValue > xMax)) {
+                    xInput.style.borderColor = '#f87171';
+                    valid = false;
+                } else {
+                    xInput.style.borderColor = '#3b82f6';
+                }
+
+                if (isNaN(yValue) || yValue < yMin || yValue > yMax) {
+                    yInput.style.borderColor = '#f87171';
+                    valid = false;
+                } else {
+                    yInput.style.borderColor = '#3b82f6';
+                }
+
+                if (!valid) return;
+
+                cleanup();
+                resolve({ x: xValue, y: yValue });
+            });
+
+            actions.appendChild(cancelBtn);
+            actions.appendChild(okBtn);
+
+            content.appendChild(titleEl);
+            content.appendChild(bodyEl);
+            content.appendChild(actions);
+
+            dialog.appendChild(content);
+            backdrop.appendChild(dialog);
+            container.appendChild(backdrop);
+
+            setTimeout(() => {
+                backdrop.classList.add('show');
+                // Focus no primeiro input editável
+                if (xLocked) {
+                    yInput.focus();
+                    yInput.select();
+                } else {
+                    xInput.focus();
+                    xInput.select();
+                }
+            }, 10);
+
+            // ESC para fechar
+            const escapeHandler = (e) => {
+                if (e.key === 'Escape') {
+                    document.removeEventListener('keydown', escapeHandler);
+                    cleanup();
+                    resolve(null);
+                }
+            };
+            document.addEventListener('keydown', escapeHandler);
+        });
+    }
 }
 
 window.dialogManager = new DialogManager();

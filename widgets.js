@@ -1158,6 +1158,15 @@ class WidgetManager {
         let tooltipDiv = null;
         const hitRadius = 20; // Aumenta a área de captura dos pontos
 
+        // ---- Pan (movimento de câmera) ----
+        let panOffsetX = 0;
+        let panOffsetY = 0;
+        let isPanning = false;
+        let panStartX = 0;
+        let panStartY = 0;
+        let lastClickTime = 0;
+        let lastClickPointIndex = -1;
+
         // Reference to history manager for this chart
         const manager = this;
         
@@ -1180,7 +1189,7 @@ class WidgetManager {
             }
         };
 
-        // ---- Função de desenho ----
+        // ---- Função de desenho com pan offset ----
         const drawChart = () => {
             ctx.fillStyle = '#1a1a1a';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -1276,7 +1285,7 @@ class WidgetManager {
                     const px = padding + ((point.x - xMin) / (xMax - xMin)) * chartWidth;
                     const py = canvas.height - padding - ((point.y - yMin) / (yMax - yMin)) * chartHeight;
                     ctx.beginPath();
-                    ctx.arc(px, py, 8, 0, Math.PI * 2); // Aumenta o raio do ponto de 6 para 8
+                    ctx.arc(px, py, 8, 0, Math.PI * 2);
                     ctx.fill();
                     ctx.stroke();
                 });
@@ -1333,22 +1342,12 @@ class WidgetManager {
             }
         };
 
-        // ---- Interação ----
-        canvas.addEventListener('mousedown', (e) => {
-            // Map client (CSS) coordinates into canvas internal coordinates to account for any
-            // differences between the canvas element size and its drawing buffer. This fixes
-            // imprecision when the canvas is resized or on high-DPI displays.
-            const rect = canvas.getBoundingClientRect();
-            const scaleX = canvas.width / rect.width;
-            const scaleY = canvas.height / rect.height;
-            const mouseX = (e.clientX - rect.left) * scaleX;
-            const mouseY = (e.clientY - rect.top) * scaleY;
-
+        // ---- Função auxiliar para encontrar ponto sob o mouse ----
+        const findPointAtCoords = (mouseX, mouseY) => {
             const padding = 60;
             const chartWidth = canvas.width - padding * 2;
             const chartHeight = canvas.height - padding * 2;
 
-            let pointFound = false;
             for (let idx = 0; idx < points.length; idx++) {
                 const point = points[idx];
                 const px = padding + ((point.x - xMin) / (xMax - xMin)) * chartWidth;
@@ -1356,19 +1355,63 @@ class WidgetManager {
                 const dist = Math.sqrt((mouseX - px) ** 2 + (mouseY - py) ** 2);
                 
                 if (dist < hitRadius) {
-                    // Shift+Click para editar coordenadas
+                    return idx;
+                }
+            }
+            return -1;
+        };
+
+        // ---- Interação com mouse ----
+        canvas.addEventListener('mousedown', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const mouseX = (e.clientX - rect.left) * scaleX;
+            const mouseY = (e.clientY - rect.top) * scaleY;
+
+            const pointIdx = findPointAtCoords(mouseX, mouseY);
+
+            if (pointIdx !== -1) {
+                // Clique em um ponto
+                const currentTime = Date.now();
+                
+                if (currentTime - lastClickTime < 300 && lastClickPointIndex === pointIdx) {
+                    // Double-click: editar ponto
+                    e.preventDefault();
+                    const point = points[pointIdx];
+                    (async () => {
+                        const result = await window.dialogManager.editPointCoordinates(
+                            point,
+                            xMin, xMax,
+                            yMin, yMax,
+                            mode === 'y' && xFixed !== null
+                        );
+                        if (result) {
+                            points[pointIdx].x = result.x;
+                            points[pointIdx].y = result.y;
+                            if (mode === 'y' && xFixed && Array.isArray(xFixed)) {
+                                points.sort((a, b) => a.x - b.x);
+                            }
+                            drawChart();
+                            updateValue();
+                        }
+                    })();
+                } else {
+                    // Single-click: arrastar ponto
                     if (e.shiftKey) {
+                        // Shift+Click para editar (mantém compatibilidade)
                         e.preventDefault();
+                        const point = points[pointIdx];
                         (async () => {
                             const result = await window.dialogManager.editPointCoordinates(
                                 point,
                                 xMin, xMax,
                                 yMin, yMax,
-                                mode === 'y' && xFixed !== null // X é bloqueado se mode é 'y'
+                                mode === 'y' && xFixed !== null
                             );
                             if (result) {
-                                points[idx].x = result.x;
-                                points[idx].y = result.y;
+                                points[pointIdx].x = result.x;
+                                points[pointIdx].y = result.y;
                                 if (mode === 'y' && xFixed && Array.isArray(xFixed)) {
                                     points.sort((a, b) => a.x - b.x);
                                 }
@@ -1377,17 +1420,17 @@ class WidgetManager {
                             }
                         })();
                     } else {
-                        draggingPoint = idx;
+                        draggingPoint = pointIdx;
                         isDragging = true;
-                        pointFound = true;
                     }
-                    break;
                 }
-            }
+                
+                lastClickTime = currentTime;
+                lastClickPointIndex = pointIdx;
+            } // PAN DESABILITADO - remover clique fora dos pontos
         });
 
         canvas.addEventListener('mousemove', (e) => {
-            // Map client coords into canvas internal coords
             const rect = canvas.getBoundingClientRect();
             const scaleX = canvas.width / rect.width;
             const scaleY = canvas.height / rect.height;
@@ -1399,27 +1442,17 @@ class WidgetManager {
             const chartHeight = canvas.height - padding * 2;
 
             // Muda o cursor quando está sobre um ponto
-            let onPoint = false;
-            for (let idx = 0; idx < points.length; idx++) {
-                const point = points[idx];
-                const px = padding + ((point.x - xMin) / (xMax - xMin)) * chartWidth;
-                const py = canvas.height - padding - ((point.y - yMin) / (yMax - yMin)) * chartHeight;
-                const dist = Math.sqrt((mouseX - px) ** 2 + (mouseY - py) ** 2);
-                
-                if (dist < hitRadius) {
-                    canvas.style.cursor = 'grab';
-                    canvas.title = 'Arraste para mover • Shift+Clique para editar';
-                    onPoint = true;
-                    break;
-                }
-            }
-            if (!onPoint) {
+            const pointIdx = findPointAtCoords(mouseX, mouseY);
+            
+            if (pointIdx !== -1) {
                 canvas.style.cursor = isDragging ? 'grabbing' : 'grab';
+                canvas.title = 'Arraste para mover • Duplo clique para editar';
+            } else {
+                canvas.style.cursor = 'default';
                 canvas.title = '';
             }
 
             if (isDragging && draggingPoint !== null) {
-                // Use the mapped mouse coordinates for calculations
                 const newX = xMin + ((mouseX - padding) / chartWidth) * (xMax - xMin);
                 const newY = yMin + ((canvas.height - padding - mouseY) / chartHeight) * (yMax - yMin);
 
@@ -1437,7 +1470,96 @@ class WidgetManager {
                 hideValueTooltip();
                 isDragging = false;
                 draggingPoint = null;
-                // Push final state after drag completes
+                if (window.globalHistoryManager) {
+                    window.globalHistoryManager.push(window.globalHistoryManager.createSnapshot());
+                }
+            }
+        });
+
+        // ---- Touch events para mobile ----
+        let touchStartX = 0;
+        let touchStartY = 0;
+        let touchPointIdx = -1;
+        let lastTouchTime = 0;
+
+        canvas.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 1) {
+                const touch = e.touches[0];
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+                const touchX = (touch.clientX - rect.left) * scaleX;
+                const touchY = (touch.clientY - rect.top) * scaleY;
+
+                touchStartX = touchX;
+                touchStartY = touchY;
+                touchPointIdx = findPointAtCoords(touchX, touchY);
+
+                if (touchPointIdx !== -1) {
+                    // Double tap para editar
+                    const currentTime = Date.now();
+                    if (currentTime - lastTouchTime < 300) {
+                        // Double tap detectado
+                        e.preventDefault();
+                        const point = points[touchPointIdx];
+                        (async () => {
+                            const result = await window.dialogManager.editPointCoordinates(
+                                point,
+                                xMin, xMax,
+                                yMin, yMax,
+                                mode === 'y' && xFixed !== null
+                            );
+                            if (result) {
+                                points[touchPointIdx].x = result.x;
+                                points[touchPointIdx].y = result.y;
+                                if (mode === 'y' && xFixed && Array.isArray(xFixed)) {
+                                    points.sort((a, b) => a.x - b.x);
+                                }
+                                drawChart();
+                                updateValue();
+                            }
+                        })();
+                    }
+                    lastTouchTime = currentTime;
+                    draggingPoint = touchPointIdx;
+                    isDragging = true;
+                }
+            }
+        }, { passive: false });
+
+        canvas.addEventListener('touchmove', (e) => {
+            if (e.touches.length === 1) {
+                const touch = e.touches[0];
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+                const touchX = (touch.clientX - rect.left) * scaleX;
+                const touchY = (touch.clientY - rect.top) * scaleY;
+
+                const padding = 60;
+                const chartWidth = canvas.width - padding * 2;
+                const chartHeight = canvas.height - padding * 2;
+
+                if (isDragging && draggingPoint !== null) {
+                    e.preventDefault();
+                    const newX = xMin + ((touchX - padding) / chartWidth) * (xMax - xMin);
+                    const newY = yMin + ((canvas.height - padding - touchY) / chartHeight) * (yMax - yMin);
+
+                    if (mode === 'xy') points[draggingPoint].x = this.clamp(newX, xMin, xMax);
+                    points[draggingPoint].y = this.clamp(newY, yMin, yMax);
+
+                    showValueTooltip(touch.clientX, touch.clientY, points[draggingPoint].x, points[draggingPoint].y);
+                    drawChart();
+                    updateValue();
+                }
+            }
+        }, { passive: false });
+
+        document.addEventListener('touchend', () => {
+            if (isDragging) {
+                hideValueTooltip();
+                isDragging = false;
+                draggingPoint = null;
                 if (window.globalHistoryManager) {
                     window.globalHistoryManager.push(window.globalHistoryManager.createSnapshot());
                 }

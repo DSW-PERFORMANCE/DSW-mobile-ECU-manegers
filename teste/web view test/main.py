@@ -92,7 +92,7 @@ class ECUBridge:
 
 if __name__ == "__main__":
 
-    api = ECUBridge(port="COM10", baudrate=115200)
+    api = ECUBridge(port="COM3", baudrate=115200)
 
     window = webview.create_window(
         "DSW ECU",
