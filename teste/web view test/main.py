@@ -105,4 +105,4 @@ if __name__ == "__main__":
         
     )
 
-    webview.start(debug=False,icon="web/icon.ico")
+    webview.start(debug=True,icon="web/icon.ico")

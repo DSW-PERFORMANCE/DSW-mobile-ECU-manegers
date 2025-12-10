@@ -216,10 +216,17 @@
               "command": "temp_sensor_type",
               "mode": "modern",
               "options": [
-                {"label": "NTC 10K", "value": "0"},
-                {"label": "NTC 5K", "value": "1"},
-                {"label": "PT100", "value": "2"}
-              ],
+              {"label": "NTC 10K", "value": "0"},
+              {"label": "NTC 5K", "value": "1"},
+              {"label": "PT100", "value": "2"},
+              {"label": "PT1000", "value": "3"},
+              {"label": "Termopar K", "value": "4"},
+              {"label": "Termopar J", "value": "5"},
+              {"label": "Sensor Linear 0-5V", "value": "6"},
+              {"label": "Sensor Digital", "value": "7"},
+              {"label": "Resistivo Custom", "value": "8"},
+              {"label": "Bypass (sem sensor)", "value": "9"}
+            ],
               "default": "0"
             },
             {
