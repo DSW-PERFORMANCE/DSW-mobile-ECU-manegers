@@ -471,8 +471,16 @@ class Table3DController {
         const table = document.createElement('div');
         table.className = 'table3d-main';
         
-        // Configura o grid: 1 coluna para labels + N colunas para dados
-        table.style.gridTemplateColumns = `40px repeat(${this.cols}, minmax(35px, 1fr))`;
+        // Calcula tamanho dinâmico das células baseado na largura disponível
+        const containerWidth = this.container?.offsetWidth || 800;
+        const minTableWidth = 600;
+        const labelWidth = 45;
+        const availableWidth = Math.max(containerWidth, minTableWidth) - labelWidth;
+        const cellWidth = Math.max(45, availableWidth / this.cols);
+        
+        // Configura o grid com tamanho de célula dinâmico
+        table.style.gridTemplateColumns = `${labelWidth}px repeat(${this.cols}, ${cellWidth}px)`;
+        table.style.minWidth = `${labelWidth + (cellWidth * this.cols)}px`;
 
         // Header com labels de colunas
         const headerRow = document.createElement('div');
@@ -500,14 +508,15 @@ class Table3DController {
         }
         table.appendChild(headerRow);
 
-        // Rows
+        // Cria rows com células que respeitam o tamanho calculado
         for (let row = 0; row < this.data.length; row++) {
             const rowDiv = document.createElement('div');
             rowDiv.className = 'table3d-row';
 
-            // Label da linha (valores do eixo Y se disponível)
+            // Label da linha
             const rowLabel = document.createElement('div');
             rowLabel.className = 'table3d-row-label';
+            rowLabel.style.minWidth = `${labelWidth}px`;
             
             if (this.yAxis && this.yAxis.enabled && this.yAxisValues.length > 0) {
                 const value = this.yAxisValues[row];
@@ -517,12 +526,14 @@ class Table3DController {
             }
             rowDiv.appendChild(rowLabel);
 
-            // Células
+            // Células da linha
             for (let col = 0; col < this.cols; col++) {
                 const cell = document.createElement('div');
                 cell.className = 'table3d-cell';
                 cell.dataset.row = row;
                 cell.dataset.col = col;
+                cell.style.minWidth = `${cellWidth}px`;
+                cell.style.width = `${cellWidth}px`;
 
                 const value = this.data[row] && this.data[row][col] !== undefined ? this.data[row][col] : this.min;
                 const bgColor = this.getColorForValue(value);
@@ -717,8 +728,118 @@ class Table3DController {
         // Guardar referências para atualizar depois
         this.inputField = input;
         this.tableElement = table;
+        this.scrollContainer = scrollContainer;
+        this.cellWidth = cellWidth;
+        this.labelWidth = labelWidth;
 
         return this.container;
+    }
+
+    /**
+     * Redesenha a tabela com células redimensionadas
+     */
+    redrawTable() {
+        if (!this.container) return;
+        
+        const tableElement = this.container.querySelector('.table3d-main');
+        if (!tableElement) return;
+        
+        // Calcula novo tamanho de células
+        const containerWidth = this.scrollContainer?.offsetWidth || 800;
+        const minTableWidth = 600;
+        const labelWidth = 45;
+        const availableWidth = Math.max(containerWidth, minTableWidth) - labelWidth;
+        const cellWidth = Math.max(45, availableWidth / this.cols);
+        
+        // Atualiza grid
+        tableElement.style.gridTemplateColumns = `${labelWidth}px repeat(${this.cols}, ${cellWidth}px)`;
+        tableElement.style.minWidth = `${labelWidth + (cellWidth * this.cols)}px`;
+
+        // Limpa a tabela
+        const headerRow = tableElement.querySelector('.table3d-header-row');
+        tableElement.innerHTML = '';
+        
+        if (headerRow) {
+            // Atualiza header cells
+            const headerCells = headerRow.querySelectorAll('.table3d-header-cell');
+            headerCells.forEach(cell => {
+                cell.style.minWidth = `${cellWidth}px`;
+                cell.style.width = `${cellWidth}px`;
+            });
+            tableElement.appendChild(headerRow);
+        }
+        
+        // Reconstrói linhas
+        for (let row = 0; row < this.data.length; row++) {
+            const rowDiv = document.createElement('div');
+            rowDiv.className = 'table3d-row';
+
+            const rowLabel = document.createElement('div');
+            rowLabel.className = 'table3d-row-label';
+            rowLabel.style.minWidth = `${labelWidth}px`;
+            
+            if (this.yAxis && this.yAxis.enabled && this.yAxisValues.length > 0) {
+                const value = this.yAxisValues[row];
+                rowLabel.textContent = value.toFixed(1);
+            } else {
+                rowLabel.textContent = row;
+            }
+            rowDiv.appendChild(rowLabel);
+
+            // Reconstrói células com novo tamanho
+            for (let col = 0; col < this.data[row].length; col++) {
+                const cellElement = document.createElement('div');
+                cellElement.className = 'table3d-cell';
+                cellElement.dataset.row = row;
+                cellElement.dataset.col = col;
+                cellElement.style.minWidth = `${cellWidth}px`;
+                cellElement.style.width = `${cellWidth}px`;
+                
+                const value = this.data[row][col];
+                const bgColor = this.getColorForValue(value);
+                const textColor = this.getTextColorForBg(bgColor);
+                
+                cellElement.style.backgroundColor = bgColor;
+                cellElement.style.color = textColor;
+                cellElement.textContent = (typeof value === 'number' ? value : this.min).toFixed(1);
+                
+                // Re-adiciona event listeners
+                cellElement.addEventListener('click', (e) => {
+                    this.handleCellClick(row, col, cellElement, e);
+                });
+
+                cellElement.addEventListener('dblclick', (e) => {
+                    e.stopPropagation();
+                    this.editCellWithDialog(row, col);
+                });
+
+                cellElement.addEventListener('mousedown', (e) => {
+                    if (e.button === 0) {
+                        this.isDragging = true;
+                        this.dragStart = { row, col };
+                    }
+                });
+
+                cellElement.addEventListener('mouseover', (e) => {
+                    if (this.isDragging && this.dragStart) {
+                        this.selectCellRange(this.dragStart.row, this.dragStart.col, row, col);
+                    }
+                });
+
+                cellElement.addEventListener('mouseenter', () => {
+                    this.showCellTooltip(row, col, cellElement);
+                });
+                
+                rowDiv.appendChild(cellElement);
+            }
+            tableElement.appendChild(rowDiv);
+        }
+        
+        this.tableElement = tableElement;
+        this.cellWidth = cellWidth;
+        this.labelWidth = labelWidth;
+        
+        console.log('[Table3D] Tabela redesenhada com scroll responsivo');
     }
 
     /**
@@ -814,127 +935,6 @@ class Table3DController {
         this.interpolateHBtn.disabled = !hasSelection;
         this.interpolateVBtn.disabled = !hasSelection;
         this.interpolateDBtn.disabled = !hasSelection;
-        this.mathBtn.disabled = !hasSelection;
-    }
-
-    /**
-     * Atualiza campo de entrada
-     */
-    updateInputField() {
-        if (this.selectedCell) {
-            const cellValue = this.data[this.selectedCell.row] && this.data[this.selectedCell.row][this.selectedCell.col] !== undefined 
-                ? this.data[this.selectedCell.row][this.selectedCell.col] 
-                : this.min;
-            this.inputField.value = typeof cellValue === 'number' ? cellValue : this.min;
-        }
-    }
-
-    /**
-     * Edita célula com diálogo
-     */
-    editCellWithDialog(row, col) {
-        const currentValue = this.data[row] && this.data[row][col] !== undefined ? this.data[row][col] : this.min;
-        
-        if (window.dialogManager && window.dialogManager.editNumberValue) {
-            window.dialogManager.editNumberValue(
-                `Editar [${row}, ${col}]`,
-                currentValue,
-                this.min,
-                this.max,
-                this.step,
-                this.unit,
-                (newValue) => {
-                    this.updateCellValue(row, col, newValue);
-                }
-            );
-        }
-    }
-
-    /**
-     * Manipula início do toque na tabela
-     */
-    handleTouchStart(e, tableElement) {
-        if (e.touches.length > 0) {
-            const touch = e.touches[0];
-            const element = document.elementFromPoint(touch.clientX, touch.clientY);
-            
-            if (element && element.classList.contains('table3d-cell')) {
-                const row = parseInt(element.dataset.row);
-                const col = parseInt(element.dataset.col);
-                
-                this.isDragging = true;
-                this.dragStart = { row, col };
-                
-                // Simula um clique na célula
-                this.handleCellClick(row, col, element, { 
-                    ctrlKey: false, 
-                    metaKey: false, 
-                    shiftKey: false 
-                });
-            }
-        }
-    }
-
-    /**
-     * Manipula movimento do toque na tabela
-     */
-    handleTouchMove(e, tableElement) {
-        if (!this.isDragging || !this.dragStart) return;
-        
-        if (e.touches.length > 0) {
-            const touch = e.touches[0];
-            const element = document.elementFromPoint(touch.clientX, touch.clientY);
-            
-            // Apenas previne scroll se o toque estiver DENTRO de uma célula da tabela
-            if (element && element.classList.contains('table3d-cell')) {
-                e.preventDefault(); // Previne scroll apenas quando selecionando células
-                
-                const row = parseInt(element.dataset.row);
-                const col = parseInt(element.dataset.col);
-                
-                // Seleciona range entre dragStart e posição atual
-                this.selectCellRange(this.dragStart.row, this.dragStart.col, row, col);
-            }
-        }
-    }
-
-    /**
-     * Manipula fim do toque na tabela
-     */
-    handleTouchEnd(e) {
-        this.isDragging = false;
-    }
-
-    /**
-     * Atualiza valor de uma célula
-     */
-    updateCellValue(row, col, value) {
-        // Validação: garantir que value é um número
-        const numValue = typeof value === 'number' ? value : (typeof value === 'string' ? parseFloat(value) : this.min);
-        const validValue = !isNaN(numValue) ? numValue : this.min;
-        const clamped = Math.max(this.min, Math.min(this.max, validValue));
-        
-        // Converte para o tipo correto (float ou integer)
-        const finalValue = this.valueType === 'integer' ? Math.round(clamped) : clamped;
-        
-        // Garantir que data[row][col] existe
-        if (!this.data[row]) this.data[row] = [];
-        this.data[row][col] = finalValue;
-
-        // Atualiza visual
-        const cellElement = this.tableElement.querySelector(
-            `.table3d-cell[data-row="${row}"][data-col="${col}"]`
-        );
-        if (cellElement) {
-            const bgColor = this.getColorForValue(finalValue);
-            const textColor = this.getTextColorForBg(bgColor);
-            cellElement.style.backgroundColor = bgColor;
-            cellElement.style.color = textColor;
-            const displayValue = this.valueType === 'integer' ? finalValue : finalValue.toFixed(1);
-            cellElement.textContent = displayValue;
-        }
-
-        // Atualiza campo de entrada
         this.inputField.value = finalValue;
         this.inputField.step = this.valueType === 'integer' ? '1' : this.step;
 
