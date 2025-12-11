@@ -1,12 +1,14 @@
 class DialogManager {
     constructor() {
         this.createDialogContainer();
+        this.activeDialogs = new Map();
     }
 
     createDialogContainer() {
         if (!document.getElementById('dialogContainer')) {
             const container = document.createElement('div');
             container.id = 'dialogContainer';
+            container.setAttribute('data-dialog-manager', 'true');
             document.body.appendChild(container);
         }
     }
@@ -14,8 +16,10 @@ class DialogManager {
     async show(title, message, type = 'confirm') {
         return new Promise((resolve) => {
             const container = document.getElementById('dialogContainer');
+            const dialogId = `dialog-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
             const backdrop = document.createElement('div');
             backdrop.className = 'dialog-backdrop';
+            backdrop.setAttribute('data-dialog-id', dialogId);
 
             const dialog = document.createElement('div');
             dialog.className = 'dialog';
@@ -34,79 +38,68 @@ class DialogManager {
             const actions = document.createElement('div');
             actions.className = 'dialog-actions';
 
+            let resolved = false;
+
             const cleanup = () => {
+                if (resolved) return;
+                resolved = true;
+                
+                this.activeDialogs.delete(dialogId);
                 backdrop.classList.remove('show');
-                setTimeout(() => backdrop.remove(), 300);
+                setTimeout(() => {
+                    if (backdrop.parentNode) {
+                        backdrop.remove();
+                    }
+                }, 300);
+            };
+
+            const createButton = (text, className, callback) => {
+                const btn = document.createElement('button');
+                btn.className = className;
+                btn.textContent = text;
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    if (!resolved) {
+                        cleanup();
+                        callback();
+                    }
+                });
+                return btn;
             };
 
             if (type === 'confirm') {
-                const cancelBtn = document.createElement('button');
-                cancelBtn.className = 'dialog-btn dialog-btn-cancel';
-                cancelBtn.textContent = 'Cancelar';
-                cancelBtn.addEventListener('click', () => {
-                    cleanup();
-                    resolve(false);
-                });
-
-                const okBtn = document.createElement('button');
-                okBtn.className = 'dialog-btn dialog-btn-ok';
-                okBtn.textContent = 'OK';
-                okBtn.addEventListener('click', () => {
-                    cleanup();
-                    resolve(true);
-                });
-
-                actions.appendChild(cancelBtn);
-                actions.appendChild(okBtn);
+                actions.appendChild(createButton('Cancelar', 'dialog-btn dialog-btn-cancel', () => resolve(false)));
+                actions.appendChild(createButton('OK', 'dialog-btn dialog-btn-ok', () => resolve(true)));
             } else if (type === 'retry') {
-                const cancelBtn = document.createElement('button');
-                cancelBtn.className = 'dialog-btn dialog-btn-cancel';
-                cancelBtn.textContent = 'Cancelar';
-                cancelBtn.addEventListener('click', () => {
-                    cleanup();
-                    resolve('cancel');
-                });
-
-                const retryBtn = document.createElement('button');
-                retryBtn.className = 'dialog-btn dialog-btn-retry';
-                retryBtn.textContent = 'Tentar Novamente';
-                retryBtn.addEventListener('click', () => {
-                    cleanup();
-                    resolve('retry');
-                });
-
-                actions.appendChild(cancelBtn);
-                actions.appendChild(retryBtn);
+                actions.appendChild(createButton('Cancelar', 'dialog-btn dialog-btn-cancel', () => resolve('cancel')));
+                actions.appendChild(createButton('Tentar Novamente', 'dialog-btn dialog-btn-retry', () => resolve('retry')));
             } else {
-                const okBtn = document.createElement('button');
-                okBtn.className = 'dialog-btn dialog-btn-ok';
-                okBtn.textContent = 'OK';
-                okBtn.addEventListener('click', () => {
-                    cleanup();
-                    resolve(true);
-                });
-
-                actions.appendChild(okBtn);
+                actions.appendChild(createButton('OK', 'dialog-btn dialog-btn-ok', () => resolve(true)));
             }
 
             content.appendChild(titleEl);
             content.appendChild(messageEl);
             content.appendChild(actions);
-
             dialog.appendChild(content);
             backdrop.appendChild(dialog);
             container.appendChild(backdrop);
 
-            setTimeout(() => backdrop.classList.add('show'), 10);
+            this.activeDialogs.set(dialogId, { backdrop, cleanup });
+
+            backdrop.offsetHeight;
+            setTimeout(() => {
+                if (backdrop.parentNode) {
+                    backdrop.classList.add('show');
+                }
+            }, 10);
 
             const handleEsc = (e) => {
-                if (e.key === 'Escape') {
+                if (e.key === 'Escape' && !resolved) {
                     document.removeEventListener('keydown', handleEsc);
                     cleanup();
                     resolve(false);
                 }
             };
-
             document.addEventListener('keydown', handleEsc);
         });
     }
@@ -130,14 +123,18 @@ class DialogManager {
     async info(title, message, icon = 'bi-info-circle-fill') {
         return new Promise((resolve) => {
             const container = document.getElementById('dialogContainer');
+            const dialogId = `dialog-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
             const backdrop = document.createElement('div');
             backdrop.className = 'dialog-backdrop';
+            backdrop.setAttribute('data-dialog-id', dialogId);
 
             const dialog = document.createElement('div');
             dialog.className = 'dialog';
 
             const content = document.createElement('div');
             content.className = 'dialog-content';
+
+            let resolved = false;
 
             const titleEl = document.createElement('div');
             titleEl.className = 'dialog-title';
@@ -151,13 +148,28 @@ class DialogManager {
             const actions = document.createElement('div');
             actions.className = 'dialog-actions';
 
+            const cleanup = () => {
+                if (resolved) return;
+                resolved = true;
+                
+                this.activeDialogs.delete(dialogId);
+                backdrop.classList.remove('show');
+                setTimeout(() => {
+                    if (backdrop.parentNode) {
+                        backdrop.remove();
+                    }
+                }, 300);
+            };
+
             const okBtn = document.createElement('button');
             okBtn.className = 'dialog-btn dialog-btn-ok';
             okBtn.textContent = 'OK';
-            okBtn.addEventListener('click', () => {
-                backdrop.classList.remove('show');
-                setTimeout(() => backdrop.remove(), 300);
-                resolve();
+            okBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                if (!resolved) {
+                    cleanup();
+                    resolve();
+                }
             });
 
             actions.appendChild(okBtn);
@@ -167,21 +179,42 @@ class DialogManager {
             dialog.appendChild(content);
             backdrop.appendChild(dialog);
             container.appendChild(backdrop);
-            setTimeout(() => backdrop.classList.add('show'), 10);
+
+            this.activeDialogs.set(dialogId, { backdrop, cleanup });
+
+            backdrop.offsetHeight;
+            setTimeout(() => {
+                if (backdrop.parentNode) {
+                    backdrop.classList.add('show');
+                }
+            }, 10);
+
+            const handleEsc = (e) => {
+                if (e.key === 'Escape' && !resolved) {
+                    document.removeEventListener('keydown', handleEsc);
+                    cleanup();
+                    resolve();
+                }
+            };
+            document.addEventListener('keydown', handleEsc);
         });
     }
 
     async promptValues(title, fields, icon = 'bi-currency-dollar') {
         return new Promise((resolve) => {
             const container = document.getElementById('dialogContainer');
+            const dialogId = `dialog-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
             const backdrop = document.createElement('div');
             backdrop.className = 'dialog-backdrop';
+            backdrop.setAttribute('data-dialog-id', dialogId);
 
             const dialog = document.createElement('div');
             dialog.className = 'dialog';
 
             const content = document.createElement('div');
             content.className = 'dialog-content';
+
+            let resolved = false;
 
             const titleEl = document.createElement('div');
             titleEl.className = 'dialog-title';
@@ -195,7 +228,7 @@ class DialogManager {
             form.style.marginBottom = '18px';
 
             const inputs = [];
-            fields.forEach((field, idx) => {
+            fields.forEach((field) => {
                 const fieldDiv = document.createElement('div');
                 fieldDiv.style.display = 'flex';
                 fieldDiv.style.flexDirection = 'column';
@@ -250,13 +283,25 @@ class DialogManager {
             const actions = document.createElement('div');
             actions.className = 'dialog-actions';
 
+            const cleanup = () => {
+                if (resolved) return;
+                resolved = true;
+                
+                this.activeDialogs.delete(dialogId);
+                backdrop.classList.remove('show');
+                setTimeout(() => {
+                    if (backdrop.parentNode) {
+                        backdrop.remove();
+                    }
+                }, 300);
+            };
+
             const cancelBtn = document.createElement('button');
             cancelBtn.className = 'dialog-btn dialog-btn-cancel';
             cancelBtn.textContent = 'Cancelar';
             cancelBtn.addEventListener('click', (e) => {
                 e.preventDefault();
-                backdrop.classList.remove('show');
-                setTimeout(() => backdrop.remove(), 300);
+                cleanup();
                 resolve(null);
             });
 
@@ -265,6 +310,8 @@ class DialogManager {
             okBtn.textContent = 'OK';
             okBtn.addEventListener('click', (e) => {
                 e.preventDefault();
+                if (resolved) return;
+                
                 let valid = true;
                 const values = {};
                 inputs.forEach(({ input, field }) => {
@@ -289,8 +336,7 @@ class DialogManager {
                     values[field.label] = val;
                 });
                 if (!valid) return;
-                backdrop.classList.remove('show');
-                setTimeout(() => backdrop.remove(), 300);
+                cleanup();
                 resolve(values);
             });
 
@@ -302,7 +348,15 @@ class DialogManager {
             dialog.appendChild(content);
             backdrop.appendChild(dialog);
             container.appendChild(backdrop);
-            setTimeout(() => backdrop.classList.add('show'), 10);
+
+            this.activeDialogs.set(dialogId, { backdrop, cleanup });
+
+            backdrop.offsetHeight;
+            setTimeout(() => {
+                if (backdrop.parentNode) {
+                    backdrop.classList.add('show');
+                }
+            }, 10);
         });
     }
 
@@ -468,7 +522,13 @@ class DialogManager {
         dialog.appendChild(content);
         backdrop.appendChild(dialog);
         container.appendChild(backdrop);
-        setTimeout(() => backdrop.classList.add('show'), 10);
+
+        backdrop.offsetHeight;
+        setTimeout(() => {
+            if (backdrop.parentNode) {
+                backdrop.classList.add('show');
+            }
+        }, 10);
 
         if (!document.getElementById('dialog-spin-style')) {
             const style = document.createElement('style');
@@ -479,7 +539,11 @@ class DialogManager {
 
         return () => {
             backdrop.classList.remove('show');
-            setTimeout(() => backdrop.remove(), 300);
+            setTimeout(() => {
+                if (backdrop.parentNode) {
+                    backdrop.remove();
+                }
+            }, 300);
         };
     }
 
@@ -495,6 +559,8 @@ class DialogManager {
             const content = document.createElement('div');
             content.className = 'dialog-content';
 
+            let resolved = false;
+
             const titleEl = document.createElement('div');
             titleEl.className = 'dialog-title';
             titleEl.textContent = title;
@@ -508,8 +574,15 @@ class DialogManager {
             actions.className = 'dialog-actions';
 
             const cleanup = () => {
+                if (resolved) return;
+                resolved = true;
+                
                 backdrop.classList.remove('show');
-                setTimeout(() => backdrop.remove(), 300);
+                setTimeout(() => {
+                    if (backdrop.parentNode) {
+                        backdrop.remove();
+                    }
+                }, 300);
             };
 
             const cancelBtn = document.createElement('button');
@@ -540,7 +613,12 @@ class DialogManager {
             backdrop.appendChild(dialog);
             container.appendChild(backdrop);
 
-            setTimeout(() => backdrop.classList.add('show'), 10);
+            backdrop.offsetHeight;
+            setTimeout(() => {
+                if (backdrop.parentNode) {
+                    backdrop.classList.add('show');
+                }
+            }, 10);
         });
     }
 
@@ -555,6 +633,8 @@ class DialogManager {
 
             const content = document.createElement('div');
             content.className = 'dialog-content';
+
+            let resolved = false;
 
             const titleEl = document.createElement('div');
             titleEl.className = 'dialog-title';
@@ -575,8 +655,15 @@ class DialogManager {
             actions.className = 'dialog-actions';
 
             const cleanup = () => {
+                if (resolved) return;
+                resolved = true;
+                
                 backdrop.classList.remove('show');
-                setTimeout(() => backdrop.remove(), 300);
+                setTimeout(() => {
+                    if (backdrop.parentNode) {
+                        backdrop.remove();
+                    }
+                }, 300);
             };
 
             const cancelBtn = document.createElement('button');
@@ -611,12 +698,25 @@ class DialogManager {
             backdrop.appendChild(dialog);
             container.appendChild(backdrop);
 
+            backdrop.offsetHeight;
             setTimeout(() => {
-                backdrop.classList.add('show');
-                document.getElementById('number-input').focus();
-                document.getElementById('number-input').select();
+                if (backdrop.parentNode) {
+                    backdrop.classList.add('show');
+                    document.getElementById('number-input').focus();
+                    document.getElementById('number-input').select();
+                }
             }, 10);
         });
+    }
+
+    restoreActiveDialogs() {
+        // This method is called when the dialog container is restored to the DOM
+        // It re-attaches any active dialogs that may have been removed
+        const container = document.getElementById('dialogContainer');
+        if (container && this.activeDialogs.size > 0) {
+            // The dialogs are already in memory in this.activeDialogs
+            // They will be automatically re-added when needed through show() methods
+        }
     }
 
     /**
@@ -640,6 +740,8 @@ class DialogManager {
 
             const content = document.createElement('div');
             content.className = 'dialog-content';
+
+            let resolved = false;
 
             const titleEl = document.createElement('div');
             titleEl.className = 'dialog-title';
@@ -718,8 +820,15 @@ class DialogManager {
             actions.className = 'dialog-actions';
 
             const cleanup = () => {
+                if (resolved) return;
+                resolved = true;
+                
                 backdrop.classList.remove('show');
-                setTimeout(() => backdrop.remove(), 300);
+                setTimeout(() => {
+                    if (backdrop.parentNode) {
+                        backdrop.remove();
+                    }
+                }, 300);
             };
 
             const cancelBtn = document.createElement('button');
@@ -771,21 +880,22 @@ class DialogManager {
             backdrop.appendChild(dialog);
             container.appendChild(backdrop);
 
+            backdrop.offsetHeight;
             setTimeout(() => {
-                backdrop.classList.add('show');
-                // Focus no primeiro input editável
-                if (xLocked) {
-                    yInput.focus();
-                    yInput.select();
-                } else {
-                    xInput.focus();
-                    xInput.select();
+                if (backdrop.parentNode) {
+                    backdrop.classList.add('show');
+                    if (xLocked) {
+                        yInput.focus();
+                        yInput.select();
+                    } else {
+                        xInput.focus();
+                        xInput.select();
+                    }
                 }
             }, 10);
 
-            // ESC para fechar
             const escapeHandler = (e) => {
-                if (e.key === 'Escape') {
+                if (e.key === 'Escape' && !resolved) {
                     document.removeEventListener('keydown', escapeHandler);
                     cleanup();
                     resolve(null);
@@ -797,3 +907,18 @@ class DialogManager {
 }
 
 window.dialogManager = new DialogManager();
+
+// Proteger contra remoções acidentais do container
+const containerObserver = new MutationObserver(() => {
+    setTimeout(() => {
+        window.dialogManager.restoreActiveDialogs();
+    }, 100);
+});
+
+const container = document.getElementById('dialogContainer');
+if (container) {
+    containerObserver.observe(container.parentElement, {
+        childList: true,
+        subtree: true
+    });
+}

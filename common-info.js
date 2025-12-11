@@ -2,9 +2,11 @@
  * common-info.js
  * 
  * Sistema de coleta automática de dados diagnósticos do ECU
- * - Polling de baixa prioridade quando ECU está online
- * - Pausa automática quando há operações prioritárias (save/load)
+ * - Polling de MÍNIMA prioridade quando ECU está online
+ * - Pausa automática quando há operações de software (máxima prioridade)
  * - Modo emergência após 3 falhas consecutivas
+ * - Sai de emergência ao: reiniciar software OU ao conectar ECU (offline→online)
+ * - Retoma 744ms após último comando de software
  * - Expõe dados globalmente via window.CommonInfo
  */
 
@@ -17,11 +19,15 @@
         isEmergencyMode: false,
         failureCount: 0,
         maxConsecutiveFailures: 3,
+        wasOffline: true, // Rastreia transição offline→online
         
         // Configuração
         config: null,
         pollingInterval: null,
+        resumeTimeoutId: null, // Timeout para retomada do polling (744ms)
         pollingFrequency: 500, // ms padrão
+        resumeDelayMs: 744, // Espera 744ms após último comando para retomar
+        lastCommandTime: 0, // Timestamp do último comando de software
         
         // Dados coletados
         data: {},
@@ -137,13 +143,16 @@
                     
                     console.log(`[CommonInfo] 🔌 Status: ${status ? '🟢 ONLINE' : '🔴 OFFLINE'}`);
                     
+                    // TRANSIÇÃO: offline → online
                     if (status && !wasOnline) {
-                        console.log('[CommonInfo] 📡 ECU conectada - iniciando polling de dados');
+                        console.log('[CommonInfo] 📡 ECU conectada (offline→online) - SAINDO DE EMERGÊNCIA');
                         this.failureCount = 0; // resetar contador de falhas
-                        this.isEmergencyMode = false;
+                        this.isEmergencyMode = false; // SAIR DE EMERGÊNCIA na transição
+                        this.wasOffline = false;
                         this.startPolling();
                     } else if (!status && wasOnline) {
                         console.log('[CommonInfo] 📵 ECU desconectada - usando valores padrão');
+                        this.wasOffline = true;
                         this.stopPolling();
                         // Manter dados padrão disponíveis offline
                         this.restoreDefaultValues();
@@ -178,26 +187,85 @@
         },
         
         /**
-         * Monitora a fila de comandos para detectar operações prioritárias
+         * Monitora a fila de comandos na communication-bridge para detectar operações prioritárias
+         * CommonInfo tem MÍNIMA prioridade e sempre cede para comandos de software
          */
         monitorCommandQueue() {
-            if (!window.ecuCommunication) return;
+            if (!window.communicationBridge) {
+                console.warn('[CommonInfo] ⚠️ communicationBridge não disponível');
+                return;
+            }
             
-            const originalSendCommand = window.ecuCommunication.sendCommand?.bind(window.ecuCommunication);
+            // Interceptar execute() da bridge (comando de software)
+            const originalExecute = window.communicationBridge.execute?.bind(window.communicationBridge);
             
-            if (originalSendCommand) {
-                window.ecuCommunication.sendCommand = (command, ...args) => {
-                    // Parar polling ao enviar comando prioritário
+            if (originalExecute) {
+                window.communicationBridge.execute = async (command, value) => {
+                    // Parar polling ao enviar comando prioritário (não é getcominfo)
                     if (command && !command.includes('getcominfo')) {
                         this.pausePolling();
-                        console.log(`[CommonInfo] ⏸️ Polling pausado (comando: ${command})`);
+                        this.lastCommandTime = Date.now(); // Marca tempo do comando
+                        console.log(`[CommonInfo] ⏸️ Polling pausado (comando software: ${command})`);
                     }
                     
-                    const result = originalSendCommand(command, ...args);
+                    // Executar comando original
+                    const result = await originalExecute(command, value);
+                    
+                    // Se não era getcominfo, agendar retomada em 744ms
+                    if (command && !command.includes('getcominfo')) {
+                        this.scheduleResumePolling();
+                    }
                     
                     return result;
                 };
             }
+            
+            // Também interceptar sendCommand() direto na ECUCommunication (fallback)
+            if (window.ecuCommunication) {
+                const originalSendCommand = window.ecuCommunication.sendCommand?.bind(window.ecuCommunication);
+                
+                if (originalSendCommand) {
+                    window.ecuCommunication.sendCommand = async (command, value) => {
+                        // Parar polling ao enviar comando não-diagnóstico
+                        if (command && !command.includes('getcominfo')) {
+                            this.pausePolling();
+                            this.lastCommandTime = Date.now();
+                            console.log(`[CommonInfo] ⏸️ Polling pausado (comando ECU: ${command})`);
+                        }
+                        
+                        // Executar comando original
+                        const result = await originalSendCommand(command, value);
+                        
+                        // Se não era getcominfo, agendar retomada em 744ms
+                        if (command && !command.includes('getcominfo')) {
+                            this.scheduleResumePolling();
+                        }
+                        
+                        return result;
+                    };
+                }
+            }
+        },
+        
+        /**
+         * Agenda retomada do polling com delay de 744ms desde o último comando
+         */
+        scheduleResumePolling() {
+            // Se já temos um timeout agendado, cancela
+            if (this.resumeTimeoutId) {
+                clearTimeout(this.resumeTimeoutId);
+            }
+            
+            // Calcula tempo até 744ms após último comando
+            const timeSinceLastCommand = Date.now() - this.lastCommandTime;
+            const delayUntilResume = Math.max(0, this.resumeDelayMs - timeSinceLastCommand);
+            
+            console.log(`[CommonInfo] ⏱️ Retomada agendada em ${delayUntilResume}ms`);
+            
+            this.resumeTimeoutId = setTimeout(() => {
+                this.resumePolling();
+                this.resumeTimeoutId = null;
+            }, delayUntilResume);
         },
         
         /**
@@ -236,6 +304,11 @@
                 clearInterval(this.pollingInterval);
                 this.pollingInterval = null;
             }
+            // Limpar timeout de retomada se existir
+            if (this.resumeTimeoutId) {
+                clearTimeout(this.resumeTimeoutId);
+                this.resumeTimeoutId = null;
+            }
             this.isPolling = false;
             console.log('[CommonInfo] ⏹️ Polling parado');
         },
@@ -262,20 +335,56 @@
         },
         
         /**
-         * Busca dados diagnósticos comuns do ECU
+         * Busca dados diagnósticos comuns do ECU via communication-bridge (ponte serial)
          */
         async fetchCommonData() {
             if (!this.config?.commonDiagnosticsCommand || !this.isOnline) {
+                if (!this.config?.commonDiagnosticsCommand) {
+                    console.warn('[CommonInfo] ❌ Comando diagnóstico não configurado');
+                }
+                if (!this.isOnline) {
+                    console.debug('[CommonInfo] ⏸️ ECU offline - fetchCommonData ignorado');
+                }
                 return;
             }
             
+            console.debug(`[CommonInfo] 📡 Iniciando fetch: ${this.config.commonDiagnosticsCommand}`);
+            
             try {
-                if (window.ecuCommunication && window.ecuCommunication.sendCommand) {
+                // Preferir usar communication-bridge (ponte de comunicação com serial)
+                if (window.communicationBridge && window.communicationBridge.queryDiagnosticsData) {
                     const command = this.config.commonDiagnosticsCommand;
+                    console.debug(`[CommonInfo] 🌉 Usando bridge.queryDiagnosticsData()`);
                     
-                    // Enviar comando com timeout
+                    // Enviar comando com timeout de 3 segundos
                     const timeoutId = setTimeout(() => {
-                        this.handleFetchFailure('Timeout ao buscar dados');
+                        this.handleFetchFailure('Timeout ao buscar dados via bridge');
+                    }, 3000);
+                    
+                    try {
+                        const response = await window.communicationBridge.queryDiagnosticsData(command);
+                        clearTimeout(timeoutId);
+                        
+                        if (response) {
+                            console.debug(`[CommonInfo] ✅ Bridge retornou dados: ${String(response).substring(0, 50)}...`);
+                            this.parseCommonData(response);
+                        } else {
+                            console.warn('[CommonInfo] ⚠️ Bridge retornou vazio');
+                            this.handleFetchFailure('Resposta vazia da bridge');
+                        }
+                    } catch (error) {
+                        clearTimeout(timeoutId);
+                        console.error(`[CommonInfo] ❌ Erro na bridge:`, error);
+                        this.handleFetchFailure(`Erro na bridge: ${error.message}`);
+                    }
+                }
+                // Fallback para ECUCommunication direto
+                else if (window.ecuCommunication && window.ecuCommunication.sendCommand) {
+                    const command = this.config.commonDiagnosticsCommand;
+                    console.debug(`[CommonInfo] 📡 Usando ECU.sendCommand() direto`);
+                    
+                    const timeoutId = setTimeout(() => {
+                        this.handleFetchFailure('Timeout ao buscar dados via ECU');
                     }, 3000);
                     
                     window.ecuCommunication.sendCommand(command, (response) => {
@@ -287,9 +396,13 @@
                             this.handleFetchFailure('Resposta vazia da ECU');
                         }
                     });
+                } else {
+                    // Nenhuma comunicação disponível
+                    console.error('[CommonInfo] ❌ Nenhuma bridge ou ECU disponível para diagnóstico');
+                    this.handleFetchFailure('CommunicationBridge e ECUCommunication não disponíveis');
                 }
             } catch (error) {
-                this.handleFetchFailure(`Erro: ${error.message}`);
+                this.handleFetchFailure(`Erro geral: ${error.message}`);
             }
         },
         
@@ -308,6 +421,7 @@
         
         /**
          * Ativa modo emergência
+         * Pode sair: 1) reiniciando software, 2) ao detectar offline→online
          */
         activateEmergencyMode() {
             this.isEmergencyMode = true;
@@ -317,9 +431,10 @@
             this.restoreDefaultValues();
             
             console.error('[CommonInfo] 🆘 MODO EMERGÊNCIA:', {
-                motivo: '3 tentativas falhadas',
+                motivo: '3 tentativas falhadas consecutivas',
                 dados: 'Usando valores padrão do JSON',
-                acao: 'Verifique a conexão com a ECU'
+                saidaEmergencia: 'Reiniciar software OU reconectar ECU (offline→online)',
+                acao: 'Verifique a conexão com a ECU ou reinicie o software'
             });
         },
         
@@ -384,6 +499,7 @@
                 // Reset contador de falhas em sucesso
                 this.failureCount = 0;
                 this.successCount++;
+                this.fetchCount++; // ✅ Incrementar contador de fetches
                 
                 if (this.isEmergencyMode) {
                     console.log('[CommonInfo] ✅ MODO EMERGÊNCIA DESATIVADO - Dados da ECU recuperados');
@@ -454,6 +570,10 @@
          * Retorna estatísticas do sistema
          */
         getStats() {
+            const timeSinceLastCommand = this.lastCommandTime ? Date.now() - this.lastCommandTime : null;
+            const remainingPauseMs = timeSinceLastCommand !== null ? 
+                Math.max(0, this.resumeDelayMs - timeSinceLastCommand) : null;
+            
             return {
                 online: this.isOnline,
                 pausado: this.isPaused,
@@ -462,8 +582,12 @@
                 falhasConsecutivas: this.failureCount,
                 sucessos: this.successCount,
                 frequencia: `${this.pollingFrequency}ms`,
+                ultimoComando: this.lastCommandTime ? new Date(this.lastCommandTime).toLocaleTimeString('pt-BR') : 'nunca',
+                pausaRestante: remainingPauseMs !== null ? `${remainingPauseMs}ms` : 'N/A',
                 ultimaAtualizacao: this.lastFetchTime ? new Date(this.lastFetchTime).toLocaleTimeString('pt-BR') : 'nunca',
-                campos: Object.keys(this.data).length
+                campos: Object.keys(this.data).length,
+                prioridade: 'MÍNIMA (cede sempre para comandos de software)',
+                saidaEmergencia: 'Reiniciar software OU offline→online'
             };
         },
         
@@ -479,6 +603,35 @@
                 'Fonte': info.source,
                 'Título': info.title
             })));
+        },
+
+        /**
+         * Método de debug para inspecionar estado do CommonInfo (use no console)
+         * window.CommonInfo.debug()
+         */
+        debug() {
+            console.group('[CommonInfo] 🔍 DIAGNÓSTICO COMPLETO');
+            console.log('STATUS:', this.getStats());
+            console.log('CONFIGURAÇÃO:', this.config);
+            console.log('DADOS ATUAIS:', this.data);
+            console.log('ESTADO BOOLEANO:', {
+                isOnline: this.isOnline,
+                isPaused: this.isPaused,
+                isPolling: this.isPolling,
+                isEmergencyMode: this.isEmergencyMode,
+                wasOffline: this.wasOffline
+            });
+            console.log('COMUNICAÇÃO:', {
+                communicationBridge: !!window.communicationBridge,
+                queryDiagnosticsData: !!(window.communicationBridge && window.communicationBridge.queryDiagnosticsData),
+                ecuCommunication: !!window.ecuCommunication,
+                ecuSendCommand: !!(window.ecuCommunication && window.ecuCommunication.sendCommand)
+            });
+            console.log('LISTENERS:', {
+                total: this._listeners.size,
+                listeners: Array.from(this._listeners)
+            });
+            console.groupEnd();
         }
     };
     

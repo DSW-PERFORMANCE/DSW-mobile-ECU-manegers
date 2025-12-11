@@ -1,0 +1,579 @@
+/* ===== Table3D Widget Styles ===== */
+
+.widget-table3d {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.table3d-scroll-container {
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background-color: #0f0f0f;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
+    flex: 1;
+    min-height: 300px;
+    overflow-x: auto;
+    overflow-y: auto;
+    max-height: 500px;
+    display: block;
+}
+
+.table3d-main {
+    display: grid;
+    background-color: #1a1a1a;
+    min-width: 100%;
+    width: max-content;
+    min-height: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+.table3d-row {
+    display: contents;
+}
+
+.table3d-header-row {
+    display: contents;
+}
+
+.table3d-header-cell {
+    background-color: #2a2a2a;
+    font-weight: 600;
+    color: var(--light-red);
+    padding: 4px 2px;
+    text-align: center;
+    font-size: var(--table3d-header-font);
+    border-radius: 3px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    height: var(--table3d-header-height);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.table3d-corner-cell {
+    background-color: #1a1a1a;
+    font-weight: 600;
+    color: #666;
+    padding: 4px 2px;
+    text-align: center;
+    font-size: var(--table3d-label-font);
+    border-radius: 3px;
+    position: sticky;
+    top: 0;
+    left: 0;
+    z-index: 2;
+    height: var(--table3d-header-height);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.table3d-row-label {
+    background-color: #2a2a2a;
+    font-weight: 500;
+    color: var(--light-red);
+    padding: 2px 2px;
+    text-align: center;
+    font-size: var(--table3d-label-font);
+    width: var(--table3d-label-width);
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    border-radius: 3px;
+    height: var(--table3d-cell-height);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.table3d-cell {
+    background-color: rgb(100, 20, 20);
+    color: #fff;
+    padding: var(--table3d-cell-padding);
+    text-align: center;
+    font-size: var(--table3d-cell-font);
+    font-weight: 500;
+    cursor: pointer;
+    border-radius: 2px;
+    transition: all 0.2s ease;
+    user-select: none;
+    border: 1px solid transparent;
+    height: var(--table3d-cell-height);
+    min-width: var(--table3d-cell-width);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    touch-action: none;
+    flex-shrink: 0;
+}
+
+.table3d-cell:hover {
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    transform: scale(1.05);
+}
+
+.table3d-cell.selected {
+    border: 2px solid var(--light-red);
+    box-shadow: 0 0 8px rgba(165, 42, 42, 0.6);
+}
+
+.table3d-cell.multi-selected {
+    border: 2px solid var(--light-red);
+    box-shadow: 0 0 8px rgba(165, 42, 42, 0.6);
+    background-color: rgba(165, 42, 42, 0.3) !important;
+}
+
+.table3d-cell-edit-input {
+    width: 100%;
+    height: 100%;
+    background-color: transparent;
+    border: none;
+    color: inherit;
+    text-align: center;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.table3d-cell-edit-input:focus {
+    outline: none;
+}
+
+.table3d-control-panel {
+    background-color: var(--bg-darker);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 15px;
+}
+
+.table3d-controls {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 15px;
+}
+
+.table3d-input-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.table3d-input-group label {
+    white-space: nowrap;
+    color: var(--text-light);
+    font-size: 14px;
+}
+
+.table3d-value-input {
+    background-color: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-color);
+    color: var(--text-light);
+    padding: 8px 12px;
+    border-radius: 4px;
+    width: 100px;
+    font-size: 14px;
+}
+
+.table3d-value-input:focus {
+    outline: none;
+    border-color: var(--light-red);
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.table3d-unit {
+    color: #999;
+    font-size: 13px;
+    min-width: 30px;
+}
+
+.table3d-action-group {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.btn-table3d {
+    padding: 8px 14px;
+    background-color: var(--primary-red);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+.btn-table3d:hover:not(:disabled) {
+    background-color: var(--light-red);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(165, 42, 42, 0.3);
+}
+
+.btn-table3d:active:not(:disabled) {
+    background-color: var(--dark-red);
+    transform: translateY(0);
+}
+
+.btn-table3d:disabled {
+    background-color: #4a4a4a;
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.btn-fill-row {
+    background-color: #2a5a8a;
+}
+
+.btn-fill-row:hover:not(:disabled) {
+    background-color: #3a6aaa;
+}
+
+.btn-fill-row:active:not(:disabled) {
+    background-color: #1a4a7a;
+}
+
+.btn-interpolate {
+    background-color: #6a5a2a;
+}
+
+.btn-interpolate:hover:not(:disabled) {
+    background-color: #8a7a4a;
+}
+
+.btn-interpolate:active:not(:disabled) {
+    background-color: #4a3a0a;
+}
+
+.btn-math {
+    background-color: #8a6a2a;
+}
+
+.btn-math:hover:not(:disabled) {
+    background-color: #aa8a4a;
+}
+
+.btn-math:active:not(:disabled) {
+    background-color: #6a4a0a;
+}
+
+.table3d-tooltip {
+    position: fixed;
+    background-color: rgba(0, 0, 0, 0.9);
+    color: var(--text-light);
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    pointer-events: none;
+    border: 1px solid var(--light-red);
+    z-index: 1000;
+    display: none;
+    white-space: nowrap;
+}
+
+/* Table3D Axis Labels */
+.table3d-axis-labels {
+    display: flex;
+    gap: 15px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+    padding: 8px;
+    background-color: rgba(255, 255, 255, 0.02);
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.table3d-axis-label-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 250px;
+}
+
+.btn-edit-axes {
+    background-color: #4a6a5a;
+    color: white;
+    border: 1px solid #5a8a7a;
+    padding: 8px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.btn-edit-axes:hover {
+    background-color: #5a8a7a;
+    border-color: #6aaa9a;
+    transform: translateY(-1px);
+}
+
+.btn-edit-axes:active {
+    background-color: #3a5a4a;
+    transform: translateY(0);
+}
+
+.btn-edit-axes:disabled {
+    background-color: #2a3a3a;
+    border-color: #3a4a4a;
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+/* Axis Labels Lateral */
+.table3d-y-axis-label {
+    font-size: 13px;
+    font-weight: bold;
+    color: #888;
+    padding: 0 5px;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 30px;
+    flex-shrink: 0;
+}
+
+.table3d-x-axis-label {
+    text-align: center;
+    color: #888;
+    font-size: 13px;
+    font-weight: bold;
+    padding: 5px 0;
+    white-space: nowrap;
+}
+
+/* ===== Scrollbar Styling para Table3D ===== */
+.table3d-scroll-container::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+}
+
+.table3d-scroll-container::-webkit-scrollbar-track {
+    background: var(--bg-darker);
+}
+
+.table3d-scroll-container::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 6px;
+}
+
+.table3d-scroll-container::-webkit-scrollbar-thumb:hover {
+    background: var(--light-red);
+}
+
+.table3d-scroll-container::-webkit-scrollbar-corner {
+    background: var(--bg-darker);
+}
+
+/* ===== Responsive Table3D ===== */
+@media (max-width: 1024px) {
+    .table3d-scroll-container {
+        max-height: 450px;
+    }
+    
+    .table3d-cell {
+        min-height: 20px;
+        min-width: 32px;
+        font-size: 10px;
+    }
+}
+
+@media (max-width: 768px) {
+    .widget-table3d {
+        width: 100%;
+        overflow-x: hidden;
+    }
+    
+    .table3d-scroll-container {
+        max-height: 400px;
+        width: 100%;
+    }
+    
+    .table3d-main {
+        width: 100%;
+    }
+    
+    .table3d-cell {
+        min-height: 20px;
+        min-width: 30px;
+        font-size: 9px;
+        padding: 2px 1px;
+    }
+    
+    .table3d-header-cell {
+        font-size: 8px;
+        padding: 3px 1px;
+    }
+    
+    .table3d-row-label {
+        font-size: 8px;
+        min-width: 28px;
+        width: 28px;
+    }
+    
+    .table3d-controls {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+    
+    .table3d-action-group {
+        flex-direction: column;
+    }
+    
+    .btn-table3d {
+        width: 100%;
+        font-size: 12px;
+    }
+    
+    .table3d-input-group {
+        flex-wrap: wrap;
+    }
+    
+    .table3d-value-input {
+        width: 100px;
+    }
+}
+
+@media (max-width: 600px) {
+    .widget-table3d {
+        gap: 12px;
+    }
+    
+    .table3d-scroll-container {
+        max-height: 350px;
+        min-height: 250px;
+    }
+    
+    .table3d-cell {
+        min-height: 18px;
+        min-width: 28px;
+        font-size: 8px;
+        padding: 1px;
+    }
+    
+    .table3d-header-cell {
+        font-size: 7px;
+        padding: 2px 0;
+        height: var(--table3d-header-height);
+    }
+    
+    .table3d-corner-cell {
+        font-size: 6px;
+    }
+    
+    .table3d-row-label {
+        font-size: 7px;
+        min-width: 24px;
+        width: 24px;
+        padding: 1px;
+    }
+    
+    .table3d-y-axis-label {
+        font-size: 10px;
+        min-width: 18px;
+        padding: 0 2px;
+    }
+    
+    .table3d-x-axis-label {
+        font-size: 10px;
+        padding: 3px 0;
+    }
+    
+    .table3d-control-panel {
+        padding: 12px;
+    }
+    
+    .table3d-controls {
+        gap: 10px;
+    }
+    
+    .table3d-input-group {
+        gap: 8px;
+        font-size: 12px;
+    }
+    
+    .table3d-input-group label {
+        font-size: 12px;
+    }
+    
+    .table3d-value-input {
+        width: 80px;
+        padding: 6px 10px;
+        font-size: 12px;
+    }
+    
+    .table3d-unit {
+        font-size: 12px;
+        min-width: 25px;
+    }
+    
+    .btn-table3d {
+        padding: 6px 10px;
+        font-size: 11px;
+    }
+}
+
+@media (max-width: 480px) {
+    .widget-table3d {
+        gap: 10px;
+    }
+    
+    .table3d-scroll-container {
+        max-height: 300px;
+        min-height: 200px;
+    }
+    
+    .table3d-cell {
+        min-height: 16px;
+        min-width: 25px;
+        font-size: 7px;
+        padding: 0;
+    }
+    
+    .table3d-header-cell {
+        font-size: 6px;
+        padding: 1px 0;
+    }
+    
+    .table3d-row-label {
+        font-size: 6px;
+        min-width: 22px;
+        width: 22px;
+    }
+    
+    .table3d-control-panel {
+        padding: 10px;
+    }
+    
+    .table3d-input-group {
+        gap: 5px;
+        font-size: 11px;
+    }
+    
+    .table3d-value-input {
+        width: 70px;
+        padding: 5px 8px;
+        font-size: 11px;
+    }
+    
+    .btn-table3d {
+        padding: 5px 8px;
+        font-size: 10px;
+    }
+}

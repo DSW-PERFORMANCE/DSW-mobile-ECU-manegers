@@ -1,6 +1,6 @@
 /**
  * Communication Bridge
- * Camada intermediária entre widgets e ECU Communication
+ * Camada intermediária entre widgets e ECU Communication (ponte serial)
  * Filtra, valida e ajusta comandos antes do envio
  * 
  * Responsabilidades:
@@ -9,6 +9,15 @@
  * - Aplicar transformações necessárias
  * - Registrar histórico de comandos
  * - Garantir integridade dos dados
+ * 
+ * ⚠️ PRIORIDADES:
+ * - MÁXIMA: Comandos de software (configurações, controle de motor, etc)
+ * - MÍNIMA: Dados diagnósticos comuns (CommonInfo via queryDiagnosticsData)
+ * 
+ * 📊 FLUXO DE DADOS DIAGNÓSTICOS:
+ * CommonInfo → communicationBridge.queryDiagnosticsData() → serial (ponte)
+ * CommonInfo pausa automaticamente quando software envia comandos
+ * CommonInfo retoma 744ms após último comando de software
  */
 class CommunicationBridge {
     constructor() {
@@ -277,6 +286,36 @@ class CommunicationBridge {
      */
     setLogging(enabled) {
         this.logging = enabled;
+    }
+
+    /**
+     * Busca dados diagnósticos comuns (getcominfo)
+     * Método especializado para CommonInfo - MÍNIMA prioridade
+     * Não passa por filters/validators pois é apenas leitura
+     * @param {string} command - Comando de diagnóstico (ex: "software/getcominfo")
+     * @returns {Promise<string>} Dados diagnósticos da ECU
+     */
+    async queryDiagnosticsData(command) {
+        if (!window.ecuCommunication) {
+            this.log('❌ ECU Communication não disponível para diagnóstico', 'error');
+            return null;
+        }
+
+        try {
+            // Para dados diagnósticos, usar queryCommand (leitura, não escrita)
+            if (window.ecuCommunication.queryCommand) {
+                const result = await window.ecuCommunication.queryCommand(command);
+                this.log(`✅ Dados diagnósticos obtidos: ${command}`, 'debug');
+                return result;
+            }
+            
+            // Fallback para sendCommand se queryCommand não existe
+            const result = await window.ecuCommunication.sendCommand(command, null);
+            return result;
+        } catch (error) {
+            this.log(`❌ Erro ao obter dados diagnósticos: ${error.message}`, 'error');
+            return null;
+        }
     }
 
     /**

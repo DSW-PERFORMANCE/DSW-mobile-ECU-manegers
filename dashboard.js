@@ -2019,10 +2019,12 @@
             const visualBtn = makeTabBtn('visual', 'Visual', true);
             const labelsBtn = makeTabBtn('labels', 'Rótulos');
             const valuesBtn = makeTabBtn('values', 'Valores');
+            const configBtn = makeTabBtn('config', 'Configurações');
 
             tabsHeader.appendChild(visualBtn);
             tabsHeader.appendChild(labelsBtn);
             tabsHeader.appendChild(valuesBtn);
+            tabsHeader.appendChild(configBtn);
             leftBody.appendChild(tabsHeader);
 
             const tabArea = document.createElement('div');
@@ -2034,7 +2036,8 @@
             const panes = {
                 visual: document.createElement('div'),
                 labels: document.createElement('div'),
-                values: document.createElement('div')
+                values: document.createElement('div'),
+                config: document.createElement('div')
             };
             Object.values(panes).forEach(p => { p.style.display = 'none'; p.style.padding = '6px 0'; tabArea.appendChild(p); });
             panes.visual.style.display = 'block';
@@ -2051,6 +2054,7 @@
             visualBtn.addEventListener('click', () => switchTo('visual'));
             labelsBtn.addEventListener('click', () => switchTo('labels'));
             valuesBtn.addEventListener('click', () => switchTo('values'));
+            configBtn.addEventListener('click', () => switchTo('config'));
 
             const removeBtn = document.createElement('button');
             removeBtn.textContent = '✕ Remover';
@@ -2380,11 +2384,13 @@
                 // Decide to which tab pane this field belongs
                 const visualKeys = new Set(['color','sizeScale','icon','iconRotation','gaugeRotation','fontSize','fontWeight']);
                 const valueKeys = new Set(['min','max','value','valueDivisor','mode','coldColor','hotColor','markerValue','markerColor','threshold','blink','blinkRate','fieldId','sourceElementId']);
-                const labelKeys = new Set(['id','label','unit','type','dangerStart','dangerEnd','dangerColor','warningStart','warningEnd','warningColor']);
+                const labelKeys = new Set(['id','label','unit','type']);
+                const configKeys = new Set(['dangerStart','dangerEnd','dangerColor','warningStart','warningEnd','warningColor','text','customLabel','customIcon','customColor','customIconOn','customColorOn','buttonConfigId']);
 
                 let targetPane = panes.labels; // default
                 if (visualKeys.has(f.key)) targetPane = panes.visual;
                 else if (valueKeys.has(f.key)) targetPane = panes.values;
+                else if (configKeys.has(f.key)) targetPane = panes.config;
                 else if (labelKeys.has(f.key)) targetPane = panes.labels;
                 const row = document.createElement('div');
                 row.style.display = 'flex';
