@@ -2904,7 +2904,7 @@
             confirmBtn.style.borderRadius = '4px';
             confirmBtn.style.cursor = 'pointer';
 
-            const cancelBtn = documentElement('button');
+            const cancelBtn = document.createElement('button');
             cancelBtn.textContent = 'Cancelar';
             cancelBtn.style.width = '48%';
             cancelBtn.style.padding = '8px';

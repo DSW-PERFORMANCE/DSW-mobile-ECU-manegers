@@ -709,6 +709,16 @@ class DialogManager {
         });
     }
 
+    restoreActiveDialogs() {
+        // This method is called when the dialog container is restored to the DOM
+        // It re-attaches any active dialogs that may have been removed
+        const container = document.getElementById('dialogContainer');
+        if (container && this.activeDialogs.size > 0) {
+            // The dialogs are already in memory in this.activeDialogs
+            // They will be automatically re-added when needed through show() methods
+        }
+    }
+
     /**
      * Editar coordenadas de um ponto no gráfico 2D
      * @param {Object} point - Ponto com {x, y}

@@ -506,7 +506,8 @@
         "format": "0",
         "position": 0,
         "min": 0,
-        "max": 12000
+        "max": 12000,
+        "default": 0
       },
       {
         "id": "tps",
@@ -516,7 +517,8 @@
         "format": "0.0",
         "position": 1,
         "min": 0,
-        "max": 100
+        "max": 100,
+        "default": 0
       },
       {
         "id": "coolant_temp",
@@ -526,7 +528,8 @@
         "format": "0",
         "position": 2,
         "min": -40,
-        "max": 150
+        "max": 150,
+        "default": 25
       },
       {
         "id": "air_temp",
@@ -536,7 +539,8 @@
         "format": "0",
         "position": 3,
         "min": -40,
-        "max": 100
+        "max": 100,
+        "default": 25
       },
       {
         "id": "map_pressure",
@@ -546,7 +550,8 @@
         "format": "0.0",
         "position": 4,
         "min": 0,
-        "max": 300
+        "max": 300,
+        "default": 101.3
       },
       {
         "id": "battery_voltage",
@@ -556,7 +561,8 @@
         "format": "0.0",
         "position": 5,
         "min": 8,
-        "max": 18
+        "max": 18,
+        "default": 4.4
       },
       {
         "id": "injection_duty",
@@ -566,7 +572,8 @@
         "format": "0.0",
         "position": 6,
         "min": 0,
-        "max": 100
+        "max": 100,
+        "default": 0
       },
       {
         "id": "ignition_advance",
@@ -576,7 +583,8 @@
         "format": "0.0",
         "position": 7,
         "min": -30,
-        "max": 60
+        "max": 60,
+        "default": 0
       },
       {
         "id": "fuel_pressure",
@@ -586,7 +594,8 @@
         "format": "0.00",
         "position": 8,
         "min": 0,
-        "max": 10
+        "max": 10,
+        "default": 3.0
       },
       {
         "id": "lambda",
@@ -596,7 +605,8 @@
         "format": "0.00",
         "position": 9,
         "min": 0.5,
-        "max": 1.5
+        "max": 1.5,
+        "default": 1.0
       }
     ]
   },
