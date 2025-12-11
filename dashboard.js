@@ -966,14 +966,24 @@
             // Modo press_only: comando só ao apertar
             if (buttonConfig.mode === 'press_only' && buttonConfig.commandPress) {
                 if (window.ecuCommunication && window.ecuCommunication.sendCommand) {
-                    window.ecuCommunication.sendCommand(buttonConfig.commandPress);
+                    console.log(`[Button] Enviando comando (press_only): ${buttonConfig.commandPress}`);
+                    try {
+                        await window.ecuCommunication.sendCommand(buttonConfig.commandPress);
+                    } catch (err) {
+                        console.error(`[Button] Erro ao enviar: ${err.message}`);
+                    }
                 }
             }
 
             // Modo value: enviar valores ao apertar
             if (buttonConfig.mode === 'value' && buttonConfig.valuePressCommand) {
                 if (window.ecuCommunication && window.ecuCommunication.sendCommand) {
-                    window.ecuCommunication.sendCommand(buttonConfig.valuePressCommand);
+                    console.log(`[Button] Enviando comando (value press): ${buttonConfig.valuePressCommand}`);
+                    try {
+                        await window.ecuCommunication.sendCommand(buttonConfig.valuePressCommand);
+                    } catch (err) {
+                        console.error(`[Button] Erro ao enviar: ${err.message}`);
+                    }
                 }
             }
 
@@ -982,7 +992,12 @@
                 wrapper._isActive = true;
                 if (window.ecuCommunication && window.ecuCommunication.sendCommand) {
                     const cmdWithValue = buttonConfig.command + '=' + buttonConfig.valuePress;
-                    window.ecuCommunication.sendCommand(cmdWithValue);
+                    console.log(`[Button] Enviando comando (stateful_value press): ${cmdWithValue}`);
+                    try {
+                        await window.ecuCommunication.sendCommand(buttonConfig.command, buttonConfig.valuePress);
+                    } catch (err) {
+                        console.error(`[Button] Erro ao enviar: ${err.message}`);
+                    }
                 }
                 updateStatefulButton();
             }
@@ -990,7 +1005,12 @@
             // Modo press_release: comando ao apertar
             if (buttonConfig.mode === 'press_release' && buttonConfig.commandPress) {
                 if (window.ecuCommunication && window.ecuCommunication.sendCommand) {
-                    window.ecuCommunication.sendCommand(buttonConfig.commandPress);
+                    console.log(`[Button] Enviando comando (press_release press): ${buttonConfig.commandPress}`);
+                    try {
+                        await window.ecuCommunication.sendCommand(buttonConfig.commandPress);
+                    } catch (err) {
+                        console.error(`[Button] Erro ao enviar: ${err.message}`);
+                    }
                 }
             }
 
@@ -1012,7 +1032,12 @@
                         const cmdWithValue = buttonConfig.command + '=' + valueToSend;
                         
                         if (window.ecuCommunication && window.ecuCommunication.sendCommand) {
-                            window.ecuCommunication.sendCommand(cmdWithValue);
+                            console.log(`[Button] Enviando toggle: ${cmdWithValue}`);
+                            try {
+                                await window.ecuCommunication.sendCommand(buttonConfig.command, valueToSend);
+                            } catch (err) {
+                                console.error(`[Button] Erro no toggle: ${err.message}`);
+                            }
                         }
                         
                         // Atualizar visual do botão
@@ -1032,7 +1057,7 @@
             }
         });
 
-        button.addEventListener('pointerup', (ev) => {
+        button.addEventListener('pointerup', async (ev) => {
             ev.preventDefault();
             button.style.transform = 'scale(1)';
             button.style.boxShadow = `0 4px 12px rgba(0,0,0,0.3)`;
@@ -1040,14 +1065,24 @@
             // Modo press_release: comando ao soltar
             if (buttonConfig.mode === 'press_release' && buttonConfig.commandRelease) {
                 if (window.ecuCommunication && window.ecuCommunication.sendCommand) {
-                    window.ecuCommunication.sendCommand(buttonConfig.commandRelease);
+                    console.log(`[Button] Enviando comando (press_release release): ${buttonConfig.commandRelease}`);
+                    try {
+                        await window.ecuCommunication.sendCommand(buttonConfig.commandRelease);
+                    } catch (err) {
+                        console.error(`[Button] Erro ao enviar: ${err.message}`);
+                    }
                 }
             }
 
             // Modo value: enviar valor ao soltar
             if (buttonConfig.mode === 'value' && buttonConfig.valueReleaseCommand) {
                 if (window.ecuCommunication && window.ecuCommunication.sendCommand) {
-                    window.ecuCommunication.sendCommand(buttonConfig.valueReleaseCommand);
+                    console.log(`[Button] Enviando comando (value release): ${buttonConfig.valueReleaseCommand}`);
+                    try {
+                        await window.ecuCommunication.sendCommand(buttonConfig.valueReleaseCommand);
+                    } catch (err) {
+                        console.error(`[Button] Erro ao enviar: ${err.message}`);
+                    }
                 }
             }
 
@@ -1056,7 +1091,12 @@
                 wrapper._isActive = false;
                 if (window.ecuCommunication && window.ecuCommunication.sendCommand) {
                     const cmdWithValue = buttonConfig.command + '=' + buttonConfig.valueRelease;
-                    window.ecuCommunication.sendCommand(cmdWithValue);
+                    console.log(`[Button] Enviando comando (stateful_value release): ${cmdWithValue}`);
+                    try {
+                        await window.ecuCommunication.sendCommand(buttonConfig.command, buttonConfig.valueRelease);
+                    } catch (err) {
+                        console.error(`[Button] Erro ao enviar: ${err.message}`);
+                    }
                 }
                 updateStatefulButton();
             }
@@ -2068,6 +2108,14 @@
             labelsBtn.addEventListener('click', () => switchTo('labels'));
             valuesBtn.addEventListener('click', () => switchTo('values'));
             configBtn.addEventListener('click', () => switchTo('config'));
+            
+            // Bloquear aba "Valores" para botões (não têm valor)
+            if (e.type === 'button') {
+                valuesBtn.style.opacity = '0.5';
+                valuesBtn.style.cursor = 'not-allowed';
+                valuesBtn.style.pointerEvents = 'none';
+                valuesBtn.title = 'Botões não têm valor';
+            }
 
             const removeBtn = document.createElement('button');
             removeBtn.textContent = '✕ Remover';
@@ -2229,7 +2277,8 @@
                 { label: 'Ícone Customizado (OFF)', key: 'customIcon', type: 'text', placeholder: 'Ex: heart, star, etc (deixe vazio para padrão)' },
                 { label: 'Cor Customizada (OFF)', key: 'customColor', type: 'select', options: ['red', 'green', 'blue', 'yellow', 'purple', 'orange'] },
                 { label: 'Ícone Customizado (ON)', key: 'customIconOn', type: 'text', placeholder: 'Para estado ativo (stateful only)' },
-                { label: 'Cor Customizada (ON)', key: 'customColorOn', type: 'select', options: ['red', 'green', 'blue', 'yellow', 'purple', 'orange'] }
+                { label: 'Cor Customizada (ON)', key: 'customColorOn', type: 'select', options: ['red', 'green', 'blue', 'yellow', 'purple', 'orange'] },
+                { label: 'Sincronizar com ECU', key: 'syncWithECU', type: 'checkbox', help: 'Carregar estado atual da ECU ao abrir dashboard' }
             ];
 
             let fieldsToShow = commonFields;
@@ -2422,7 +2471,7 @@
                 const visualKeys = new Set(['color','sizeScale','icon','iconRotation','gaugeRotation','fontSize','fontWeight']);
                 const valueKeys = new Set(['min','max','valueDivisor','mode','coldColor','hotColor','markerValue','markerColor','threshold','fieldId','sourceElementId']);
                 const labelKeys = new Set(['id','label','unit','type']);
-                const configKeys = new Set(['dangerStart','dangerEnd','dangerColor','warningStart','warningEnd','warningColor','text','customLabel','customIcon','customColor','customIconOn','customColorOn','buttonConfigId','blink','blinkRate']);
+                const configKeys = new Set(['dangerStart','dangerEnd','dangerColor','warningStart','warningEnd','warningColor','text','customLabel','customIcon','customColor','customIconOn','customColorOn','buttonConfigId','blink','blinkRate','syncWithECU']);
 
                 let targetPane = panes.labels; // default
                 if (visualKeys.has(f.key)) targetPane = panes.visual;
