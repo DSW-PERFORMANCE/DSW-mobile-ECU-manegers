@@ -4,31 +4,33 @@
     display: flex;
     flex-direction: column;
     gap: 15px;
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
 }
 
 .table3d-scroll-container {
     border: 1px solid var(--border-color);
     border-radius: 6px;
-    overflow: auto;
-    max-height: 500px;
     background-color: #0f0f0f;
-    -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+    -webkit-overflow-scrolling: touch;
     width: 100%;
     flex: 1;
     min-height: 300px;
-    /* Ensure horizontal scroll on small screens */
     overflow-x: auto;
     overflow-y: auto;
-    /* Tamanho mínimo da tabela */
-    min-width: 100%;
+    max-height: 500px;
+    display: block;
 }
 
 .table3d-main {
     display: grid;
     background-color: #1a1a1a;
-    /* Tamanho mínimo garantido: 600px */
-    min-width: 600px;
-    width: 100%;
+    min-width: 100%;
+    width: max-content;
+    min-height: 100%;
+    margin: 0;
+    padding: 0;
 }
 
 .table3d-row {
@@ -54,8 +56,6 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    /* Largura mínima para cada coluna */
-    min-width: 45px;
 }
 
 .table3d-corner-cell {
@@ -74,8 +74,6 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    /* Largura fixa para canto superior esquerdo */
-    min-width: 45px;
 }
 
 .table3d-row-label {
@@ -94,9 +92,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    /* Largura mínima do label */
-    min-width: 45px;
-    width: auto;
+    flex-shrink: 0;
 }
 
 .table3d-cell {
@@ -111,10 +107,8 @@
     transition: all 0.2s ease;
     user-select: none;
     border: 1px solid transparent;
-    /* Tamanho responsivo com mínimo garantido */
-    min-height: var(--table3d-cell-height);
-    min-width: 45px;
     height: var(--table3d-cell-height);
+    min-width: var(--table3d-cell-width);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -122,6 +116,7 @@
     -webkit-user-select: none;
     -webkit-touch-callout: none;
     touch-action: none;
+    flex-shrink: 0;
 }
 
 .table3d-cell:hover {
@@ -351,6 +346,7 @@
     align-items: center;
     justify-content: center;
     min-width: 30px;
+    flex-shrink: 0;
 }
 
 .table3d-x-axis-label {
@@ -360,4 +356,224 @@
     font-weight: bold;
     padding: 5px 0;
     white-space: nowrap;
+}
+
+/* ===== Scrollbar Styling para Table3D ===== */
+.table3d-scroll-container::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+}
+
+.table3d-scroll-container::-webkit-scrollbar-track {
+    background: var(--bg-darker);
+}
+
+.table3d-scroll-container::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 6px;
+}
+
+.table3d-scroll-container::-webkit-scrollbar-thumb:hover {
+    background: var(--light-red);
+}
+
+.table3d-scroll-container::-webkit-scrollbar-corner {
+    background: var(--bg-darker);
+}
+
+/* ===== Responsive Table3D ===== */
+@media (max-width: 1024px) {
+    .table3d-scroll-container {
+        max-height: 450px;
+    }
+    
+    .table3d-cell {
+        min-height: 20px;
+        min-width: 32px;
+        font-size: 10px;
+    }
+}
+
+@media (max-width: 768px) {
+    .widget-table3d {
+        width: 100%;
+        overflow-x: hidden;
+    }
+    
+    .table3d-scroll-container {
+        max-height: 400px;
+        width: 100%;
+    }
+    
+    .table3d-main {
+        width: 100%;
+    }
+    
+    .table3d-cell {
+        min-height: 20px;
+        min-width: 30px;
+        font-size: 9px;
+        padding: 2px 1px;
+    }
+    
+    .table3d-header-cell {
+        font-size: 8px;
+        padding: 3px 1px;
+    }
+    
+    .table3d-row-label {
+        font-size: 8px;
+        min-width: 28px;
+        width: 28px;
+    }
+    
+    .table3d-controls {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+    
+    .table3d-action-group {
+        flex-direction: column;
+    }
+    
+    .btn-table3d {
+        width: 100%;
+        font-size: 12px;
+    }
+    
+    .table3d-input-group {
+        flex-wrap: wrap;
+    }
+    
+    .table3d-value-input {
+        width: 100px;
+    }
+}
+
+@media (max-width: 600px) {
+    .widget-table3d {
+        gap: 12px;
+    }
+    
+    .table3d-scroll-container {
+        max-height: 350px;
+        min-height: 250px;
+    }
+    
+    .table3d-cell {
+        min-height: 18px;
+        min-width: 28px;
+        font-size: 8px;
+        padding: 1px;
+    }
+    
+    .table3d-header-cell {
+        font-size: 7px;
+        padding: 2px 0;
+        height: var(--table3d-header-height);
+    }
+    
+    .table3d-corner-cell {
+        font-size: 6px;
+    }
+    
+    .table3d-row-label {
+        font-size: 7px;
+        min-width: 24px;
+        width: 24px;
+        padding: 1px;
+    }
+    
+    .table3d-y-axis-label {
+        font-size: 10px;
+        min-width: 18px;
+        padding: 0 2px;
+    }
+    
+    .table3d-x-axis-label {
+        font-size: 10px;
+        padding: 3px 0;
+    }
+    
+    .table3d-control-panel {
+        padding: 12px;
+    }
+    
+    .table3d-controls {
+        gap: 10px;
+    }
+    
+    .table3d-input-group {
+        gap: 8px;
+        font-size: 12px;
+    }
+    
+    .table3d-input-group label {
+        font-size: 12px;
+    }
+    
+    .table3d-value-input {
+        width: 80px;
+        padding: 6px 10px;
+        font-size: 12px;
+    }
+    
+    .table3d-unit {
+        font-size: 12px;
+        min-width: 25px;
+    }
+    
+    .btn-table3d {
+        padding: 6px 10px;
+        font-size: 11px;
+    }
+}
+
+@media (max-width: 480px) {
+    .widget-table3d {
+        gap: 10px;
+    }
+    
+    .table3d-scroll-container {
+        max-height: 300px;
+        min-height: 200px;
+    }
+    
+    .table3d-cell {
+        min-height: 16px;
+        min-width: 25px;
+        font-size: 7px;
+        padding: 0;
+    }
+    
+    .table3d-header-cell {
+        font-size: 6px;
+        padding: 1px 0;
+    }
+    
+    .table3d-row-label {
+        font-size: 6px;
+        min-width: 22px;
+        width: 22px;
+    }
+    
+    .table3d-control-panel {
+        padding: 10px;
+    }
+    
+    .table3d-input-group {
+        gap: 5px;
+        font-size: 11px;
+    }
+    
+    .table3d-value-input {
+        width: 70px;
+        padding: 5px 8px;
+        font-size: 11px;
+    }
+    
+    .btn-table3d {
+        padding: 5px 8px;
+        font-size: 10px;
+    }
 }
