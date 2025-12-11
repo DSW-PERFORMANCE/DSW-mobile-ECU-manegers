@@ -1309,6 +1309,17 @@
         }
     }
 
+    // Helper para acessar CommonInfo (definido ANTES de renderViewMode)
+    function getCommonValue(fieldId) {
+        try {
+            if (!fieldId) return undefined;
+            if (window.CommonInfo && typeof window.CommonInfo.getValue === 'function') {
+                return window.CommonInfo.getValue(fieldId);
+            }
+        } catch (err) { /* ignore */ }
+        return undefined;
+    }
+
     function renderViewMode(targetContainer = container) {
         if (!targetContainer) return;
         targetContainer.innerHTML = '';
@@ -1325,22 +1336,6 @@
                 stage.dataset.designWidth = targetContainer.dataset.designWidth;
                 stage.style.setProperty('--dashboard-design-width', targetContainer.dataset.designWidth);
             }
-
-                // Helper to abstract CommonInfo access (supports getValue API if present)
-                function getCommonValue(fieldId) {
-                    try {
-                        if (!fieldId) return undefined;
-                        if (window.CommonInfo) {
-                            if (typeof window.CommonInfo.getValue === 'function') {
-                                return window.CommonInfo.getValue(fieldId);
-                            }
-                            if (window.CommonInfo.data && window.CommonInfo.data[fieldId]) {
-                                return window.CommonInfo.data[fieldId].value;
-                            }
-                        }
-                    } catch (err) { /* ignore */ }
-                    return undefined;
-                }
             if (targetContainer.dataset && targetContainer.dataset.designHeight) {
                 stage.dataset.designHeight = targetContainer.dataset.designHeight;
                 stage.style.setProperty('--dashboard-design-height', targetContainer.dataset.designHeight);
@@ -1483,11 +1478,11 @@
                 if (e.sourceElementId) {
                     const src = elements.find(s => s.id === e.sourceElementId);
                     if (src) {
+                        // Try to get value from source's fieldId
                         if (src.fieldId) {
-                            const sv = getCommonValue(src.fieldId);
-                            if (sv != null) newValue = sv;
-                            else newValue = src.value;
+                            newValue = getCommonValue(src.fieldId);
                         } else {
+                            // Use source's direct value
                             newValue = src.value;
                         }
                     }
@@ -1495,33 +1490,13 @@
 
                 // Otherwise, if bound to CommonInfo directly
                 if (newValue == null && e.fieldId) {
-                    const fv = getCommonValue(e.fieldId);
-                    if (fv != null) newValue = fv;
+                    newValue = getCommonValue(e.fieldId);
+
                 }
 
                 if (newValue !== undefined && newValue !== e.value) {
                     const el = container.querySelector(`[data-id="${e.id}"]`);
                     if (el) {
-                        // special handling: LED with source condition evaluation
-                        if (e.type === 'led' && e.blink && e.sourceElementId && e.conditionOperator) {
-                            const sourceElement = elements.find(el2 => el2.id === e.sourceElementId);
-                                if (sourceElement) {
-                                let sourceValue;
-                                if (sourceElement.fieldId) {
-                                    const tmpv = getCommonValue(sourceElement.fieldId);
-                                    sourceValue = (tmpv != null ? tmpv : sourceElement.value);
-                                } else {
-                                    sourceValue = sourceElement.value;
-                                }
-                                try {
-                                    const shouldBlink = eval(`${sourceValue} ${e.conditionOperator} ${e.conditionThreshold}`);
-                                    if (shouldBlink) startBlinking(el);
-                                    else stopBlinking(e.id);
-                                } catch (err) {
-                                    console.error('Erro ao avaliar condição LED:', err);
-                                }
-                            }
-                        }
                         updateElement(el, newValue);
                     }
                 }
@@ -2273,7 +2248,7 @@
             }
 
             // Reference to any LED condition source-select so we can keep it sync'd
-            // LED condition source select has been removed — LED uses the central data source configured in the 'Valores' tab.
+            // LED condition source has been removed — LED uses the central data source configured in the 'Valores' tab.
 
             // If both fieldId / sourceElementId are available in this element's fields, create a single
             // mutual-exclusive "Data Source" control in the Values tab so user picks one source only.
@@ -2929,7 +2904,7 @@
             confirmBtn.style.borderRadius = '4px';
             confirmBtn.style.cursor = 'pointer';
 
-            const cancelBtn = document.createElement('button');
+            const cancelBtn = documentElement('button');
             cancelBtn.textContent = 'Cancelar';
             cancelBtn.style.width = '48%';
             cancelBtn.style.padding = '8px';
