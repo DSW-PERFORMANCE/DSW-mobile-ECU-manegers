@@ -2019,7 +2019,20 @@
             const visualBtn = makeTabBtn('visual', 'Visual', true);
             const labelsBtn = makeTabBtn('labels', 'Rótulos');
             const valuesBtn = makeTabBtn('values', 'Valores');
-            const configBtn = makeTabBtn('config', 'Configurações');
+            
+            // Determinar nome da aba específica baseado no tipo
+            const typeName = {
+                'gauge': 'Gauge',
+                'bar': 'Barra',
+                'bar-marker': 'Marcador',
+                'led': 'LED',
+                'text': 'Texto',
+                'conditional-text': 'Texto Condicional',
+                'button': 'Botão',
+                'digital': 'Digital'
+            }[e.type] || 'Configurações';
+            
+            const configBtn = makeTabBtn('config', typeName);
 
             tabsHeader.appendChild(visualBtn);
             tabsHeader.appendChild(labelsBtn);
@@ -2157,7 +2170,6 @@
             const gaugeBarFields = [
                 { label: 'Mín', key: 'min', type: 'number' },
                 { label: 'Máx', key: 'max', type: 'number' },
-                { label: 'Valor', key: 'value', type: 'number' },
                 { label: 'Divisor de Valor', key: 'valueDivisor', type: 'number', step: '1' },
                 { label: 'Rótulo (Label)', key: 'label', type: 'text', placeholder: 'Ex: Temperatura, RPM' },
                 { label: 'Unidade', key: 'unit', type: 'text', placeholder: 'Ex: °C, km/h, bar' },
@@ -2179,7 +2191,6 @@
             const digitalFields = [
                 { label: 'Mín', key: 'min', type: 'number' },
                 { label: 'Máx', key: 'max', type: 'number' },
-                { label: 'Valor', key: 'value', type: 'number' },
                 { label: 'Unidade', key: 'unit', type: 'text' },
                 { label: 'Cor do Texto', key: 'color', type: 'color' }
             ];
@@ -2187,7 +2198,6 @@
             const barMarkerFields = [
                 { label: 'Mín', key: 'min', type: 'number' },
                 { label: 'Máx', key: 'max', type: 'number' },
-                { label: 'Valor', key: 'value', type: 'number' },
                 { label: 'Valor Marcador', key: 'markerValue', type: 'number' },
                 { label: 'Rótulo (Label)', key: 'label', type: 'text', placeholder: 'Ex: Pressão, Carga' },
                 { label: 'Unidade', key: 'unit', type: 'text', placeholder: 'Ex: bar, %, psi' },
@@ -2195,7 +2205,7 @@
             ];
 
             const ledFields = [
-                { label: 'Valor', key: 'value', type: 'number' },
+                { label: 'Rótulo (Label)', key: 'label', type: 'text', placeholder: 'Ex: Sensor, Alerta' },
                 { label: 'Limiar', key: 'threshold', type: 'number' },
                 { label: 'Cor Off', key: 'colorOff', type: 'color' },
                 { label: 'Piscar', key: 'blink', type: 'checkbox' },
@@ -2209,7 +2219,6 @@
             ];
 
             const conditionalTextFields = [
-                { label: 'Valor', key: 'value', type: 'number' },
                 { label: 'Tamanho Fonte (px)', key: 'fontSize', type: 'number' },
                 { label: 'Peso (400, 600, 700)', key: 'fontWeight', type: 'number' }
             ];
@@ -2286,6 +2295,24 @@
                 fixedRow.appendChild(rFixed); fixedRow.appendChild(lblFixed);
                 dsContainer.appendChild(fixedRow);
 
+                // Input para valor fixo (abaixo do radio button)
+                const fixedValueContainer = document.createElement('div');
+                fixedValueContainer.style.marginLeft = '24px';
+                fixedValueContainer.style.marginTop = '6px';
+                fixedValueContainer.style.marginBottom = '12px';
+                const fixedValueInput = document.createElement('input');
+                fixedValueInput.type = 'number';
+                fixedValueInput.style.width = '100%';
+                fixedValueInput.style.padding = '6px';
+                fixedValueInput.style.borderRadius = '4px';
+                fixedValueInput.style.background = 'var(--bg-dark)';
+                fixedValueInput.style.color = 'var(--text-light)';
+                fixedValueInput.style.border = '1px solid var(--border-color)';
+                fixedValueInput.placeholder = 'Digite o valor fixo aqui';
+                fixedValueInput.value = e.value !== undefined ? e.value : '';
+                fixedValueContainer.appendChild(fixedValueInput);
+                dsContainer.appendChild(fixedValueContainer);
+
                 // commoninfo field
                 const fieldRow = document.createElement('div');
                 fieldRow.style.display = 'flex';
@@ -2329,6 +2356,16 @@
 
                 // choose initial
                 if (e.fieldId) rField.checked = true; else if (e.sourceElementId) rElement.checked = true; else rFixed.checked = true;
+
+                // Event listener para o input de valor fixo
+                fixedValueInput.addEventListener('change', () => {
+                    elements[idx].value = fixedValueInput.value ? parseFloat(fixedValueInput.value) : undefined;
+                    try { updatePreviewForElement(idx); } catch (err) {}
+                });
+                fixedValueInput.addEventListener('input', () => {
+                    elements[idx].value = fixedValueInput.value ? parseFloat(fixedValueInput.value) : undefined;
+                    try { updatePreviewForElement(idx); } catch (err) {}
+                });
 
                 // event handlers: switching modes
                 // central helper to keep data-source state consistent across all controls
@@ -2383,9 +2420,9 @@
             fieldsToShow.forEach(f => {
                 // Decide to which tab pane this field belongs
                 const visualKeys = new Set(['color','sizeScale','icon','iconRotation','gaugeRotation','fontSize','fontWeight']);
-                const valueKeys = new Set(['min','max','value','valueDivisor','mode','coldColor','hotColor','markerValue','markerColor','threshold','blink','blinkRate','fieldId','sourceElementId']);
+                const valueKeys = new Set(['min','max','valueDivisor','mode','coldColor','hotColor','markerValue','markerColor','threshold','fieldId','sourceElementId']);
                 const labelKeys = new Set(['id','label','unit','type']);
-                const configKeys = new Set(['dangerStart','dangerEnd','dangerColor','warningStart','warningEnd','warningColor','text','customLabel','customIcon','customColor','customIconOn','customColorOn','buttonConfigId']);
+                const configKeys = new Set(['dangerStart','dangerEnd','dangerColor','warningStart','warningEnd','warningColor','text','customLabel','customIcon','customColor','customIconOn','customColorOn','buttonConfigId','blink','blinkRate']);
 
                 let targetPane = panes.labels; // default
                 if (visualKeys.has(f.key)) targetPane = panes.visual;
