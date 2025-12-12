@@ -2,6 +2,48 @@ class ECUCommunication {
     constructor() {
         this.isOnline = false;
         this.config = null;
+        this.appConfig = null;
+        this.environment = 'browser';
+        
+        // Carregar configuração de app.json
+        this.loadAppConfig();
+    }
+
+    /**
+     * Carrega configuração de app.json
+     */
+    async loadAppConfig() {
+        try {
+            const response = await fetch('app.json');
+            if (response.ok) {
+                this.appConfig = await response.json();
+                this.environment = this.appConfig.environment || 'browser';
+                console.log(`[ECUCommunication] Ambiente detectado de app.json:`, this.environment);
+                return true;
+            } else {
+                console.warn('[ECUCommunication] app.json não encontrado, usando padrão');
+                this.environment = 'browser';
+                return false;
+            }
+        } catch (err) {
+            console.error('[ECUCommunication] Erro ao carregar app.json:', err);
+            this.environment = 'browser';
+            return false;
+        }
+    }
+
+    /**
+     * Obtém o ambiente atual
+     */
+    getEnvironment() {
+        return this.environment;
+    }
+
+    /**
+     * Verifica se está rodando em um ambiente específico
+     */
+    isEnvironment(env) {
+        return this.environment === env;
     }
 
     setConfig(config) {

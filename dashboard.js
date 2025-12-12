@@ -1410,7 +1410,7 @@
             el._fillEl.style.width = clampedPct + '%';
             if (el._valueEl) el._valueEl.textContent = newValue.toFixed(1) + ' / ' + e.max.toFixed(1) + (e.unit ? ` ${e.unit}` : '');
             
-            // Atualizar posição do ponteiro vertical
+            // Atualizar posição do ponteiro vertical (se existir)
             if (el._pointerEl && el._pointerEl._pointerIndicator) {
                 el._pointerEl._pointerIndicator.style.left = clampedPct + '%';
             }
@@ -1420,6 +1420,14 @@
             el._ledEl.style.background = `radial-gradient(circle at 30% 30%, ${isActive ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.05)'}, ${ledColor})`;
             el._ledEl.style.border = isActive ? `2px solid ${e.color || '#00FF00'}` : '2px solid #555';
             el._ledEl.style.boxShadow = isActive ? `0 0 15px ${e.color || '#00FF00'}, inset 0 0 10px rgba(255,255,255,0.1)` : 'inset 0 2px 4px rgba(0,0,0,0.4)';
+            
+            // Aplicar/remover animação de blink
+            if (e.blink && isActive) {
+                el._ledEl.classList.add('led-blinking');
+            } else {
+                el._ledEl.classList.remove('led-blinking');
+            }
+            
             // Atualizar ícone se existir
             const iconEl = el._ledEl.querySelector('i');
             if (iconEl && e.icon) {
@@ -3931,25 +3939,32 @@
         overlay.style.alignItems = 'center';
         overlay.style.zIndex = '20000';
         
-        // Criar modal content
+        // Criar modal content com layout flexível
         const modalBox = document.createElement('div');
         modalBox.style.background = 'var(--bg-dark)';
         modalBox.style.borderRadius = '12px';
-        modalBox.style.padding = '20px';
         modalBox.style.maxWidth = '500px';
         modalBox.style.width = '90%';
         modalBox.style.maxHeight = '80vh';
-        modalBox.style.overflowY = 'auto';
         modalBox.style.border = '2px solid var(--primary-red)';
         modalBox.style.boxShadow = '0 8px 32px rgba(0,0,0,0.5)';
+        modalBox.style.display = 'flex';
+        modalBox.style.flexDirection = 'column';
+        
+        // Criar container para conteúdo scrollável
+        const contentContainer = document.createElement('div');
+        contentContainer.style.flex = '1';
+        contentContainer.style.overflowY = 'auto';
+        contentContainer.style.padding = '20px';
         
         // Título
         const title = document.createElement('h3');
         title.textContent = 'Configurar Dashboard Externa (Quick Stats)';
         title.style.color = 'white';
         title.style.marginBottom = '20px';
+        title.style.marginTop = '0';
         title.style.textAlign = 'center';
-        modalBox.appendChild(title);
+        contentContainer.appendChild(title);
         
         // Descrição
         const desc = document.createElement('p');
@@ -3957,7 +3972,7 @@
         desc.style.color = 'var(--text-light)';
         desc.style.fontSize = '13px';
         desc.style.marginBottom = '15px';
-        modalBox.appendChild(desc);
+        contentContainer.appendChild(desc);
         
         // Slots para cada stat
         window.quickStatsConfig.forEach((stat, idx) => {
@@ -4140,17 +4155,23 @@
                 stat.color = colorInput.value;
             });
             
-            modalBox.appendChild(slotDiv);
+            contentContainer.appendChild(slotDiv);
         });
         
-        // Botões de ação
+        modalBox.appendChild(contentContainer);
+        
+        // Botões de ação (FIXO na base do modal)
         const btnDiv = document.createElement('div');
         btnDiv.style.display = 'flex';
         btnDiv.style.gap = '10px';
-        btnDiv.style.marginTop = '20px';
+        btnDiv.style.padding = '15px 20px';
+        btnDiv.style.borderTop = '1px solid var(--border-color)';
+        btnDiv.style.background = 'rgba(0,0,0,0.3)';
+        btnDiv.style.flexShrink = '0';
         
         const saveBtn = document.createElement('button');
         saveBtn.textContent = 'Salvar';
+
         saveBtn.style.flex = '1';
         saveBtn.style.padding = '10px';
         saveBtn.style.background = 'var(--primary-red)';

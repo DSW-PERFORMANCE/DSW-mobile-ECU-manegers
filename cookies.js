@@ -1,29 +1,64 @@
 
 class StorageManager {
     constructor() {
-        // Detectar ambiente automaticamente
-        this.environment = this.detectEnvironment();
+        // Carregar configuração de app.json
+        this.appConfig = null;
+        this.environment = 'browser';
         this.version = '1.0';
         
-        console.log(`[Storage] Environment detectado: ${this.environment}`);
+        this.loadAppConfig();
     }
 
     /**
-     * Detecta o ambiente de execução
+     * Carrega configuração de app.json
      */
-    detectEnvironment() {
-        // Verificar se é uma WebView (Electron, React Native, etc)
-        if (window.ipcRenderer || window.ReactNativeWebView || window.cordova) {
-            return 'webview';
+    async loadAppConfig() {
+        try {
+            const response = await fetch('app.json');
+            if (response.ok) {
+                this.appConfig = await response.json();
+                this.version = this.appConfig.version || '1.0';
+                this.environment = this.appConfig.environment || 'browser';
+                console.log(`[Storage] Configuração carregada de app.json:`, {
+                    version: this.version,
+                    environment: this.environment
+                });
+            } else {
+                console.warn('[Storage] app.json não encontrado, usando valores padrão');
+                this.setDefaultConfig();
+            }
+        } catch (err) {
+            console.error('[Storage] Erro ao carregar app.json:', err);
+            this.setDefaultConfig();
         }
-        
-        // Verificar se é Windows (bridge via API)
-        if (window.windowsAPI) {
-            return 'windows';
-        }
-        
-        // Padrão: navegador
-        return 'browser';
+    }
+
+    /**
+     * Define configuração padrão
+     */
+    setDefaultConfig() {
+        this.appConfig = {
+            version: '1.0',
+            environment: 'browser',
+            timestamp: Date.now(),
+            data: {}
+        };
+        this.version = this.appConfig.version;
+        this.environment = this.appConfig.environment;
+    }
+
+    /**
+     * Obtém environment do app.json
+     */
+    getEnvironment() {
+        return this.appConfig?.environment || 'browser';
+    }
+
+    /**
+     * Obtém versão do app.json
+     */
+    getVersion() {
+        return this.appConfig?.version || '1.0';
     }
 
     /**

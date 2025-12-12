@@ -1,53 +1,483 @@
-<img width="1367" height="644" alt="image" src="https://github.com/user-attachments/assets/14021f95-1140-4aca-ae9f-5d010b0b0e01" />
+# DSW Mobile ECU Manager - Documentação Completa
 
-# DSW Mobile ECU Manager
+## 📋 Visão Geral
 
-## Visão Geral
-Este projeto é um gerenciador de parâmetros e configurações para ECUs automotivas, com interface web responsiva e interativa. Permite visualizar, editar, salvar e recarregar valores de diversos widgets, além de operar gráficos 2D, histórico de alterações, busca avançada e sistema de diálogos customizados.
-
-## Documentação atualizada até a versão 6
+Sistema modular de gerenciamento e monitoramento de ECU (Engine Control Unit) em tempo real com dashboard configurável, visualização de dados em múltiplos formatos, suporte a múltiplas plataformas e persistência de configurações.
 
 ---
 
-## Visão Geral do Sistema
-O sistema inicia carregando o arquivo `su.json` (estrutura de parâmetros e widgets), monta a árvore de navegação e exibe a tela inicial. Ao selecionar um item, os widgets são renderizados e os valores padrão são carregados. O histórico global é inicializado e todos os eventos de modificação são rastreados. A interface é responsiva, com atalhos globais e proteção contra perda de dados.
+## 🏗️ Estrutura de Arquivos
 
-Fluxo de inicialização:
-1. Carregamento do `index.html` e dos scripts principais.
-2. Inicialização do `main.js` (atalhos, eventos globais).
-3. Carregamento da configuração via `ecu-manager.js` (`su.json`).
-4. Renderização da árvore e widgets.
-5. Inicialização do histórico global (`history.js`).
-6. Instalação dos sistemas de diálogos, notificações e proteção.
+### Arquivos de Configuração
 
-## Principais Funcionalidades
+#### **app.json** - Configuração Global da Aplicação
+```json
+{
+  "version": "1.0",
+  "environment": "browser",
+  "timestamp": 1702436400,
+  "data": {}
+}
+```
+- **Propósito**: Controla ambiente de execução, persistência de dados, comportamento geral
+- **Usado por**: `cookies.js`, `ecu-communication.js`
+- **Lido em**: Inicialização da aplicação
 
-- **Widgets Interativos**: Slider, spinbox, combobox, toggle, radio, botão, action buttons, color toggle, checkbox group, gráfico 2D.
-- **Gráfico 2D**: Arraste pontos, Shift+Clique para editar, interpolação, reset, tooltip dinâmico.
-- **Histórico Global (Undo/Redo)**: Botões e atalhos (Ctrl+Z / Ctrl+Y) para desfazer/refazer alterações em qualquer widget.
-- **Color Toggle**: Widget especial que alterna cores e envia comando direto (sem histórico, sem alterar valores).
-- **Busca Hierárquica**: Pesquisa por nome ou caminho usando `/`.
-- **Breadcrumbs e Status**: Caminho atual, status de modificação/salvo, botão de copiar, indicadores visuais.
-- **Diálogos Customizados**: Confirmação, alerta, informação, pausa/carregando, edição de valores (ícones, múltiplos campos, validação).
-- **Proteção de Recarregar/Voltar**: Confirmação se houver alterações não salvas.
-- **Notificações**: Feedback visual para ações importantes.
-- **Mobile Friendly**: Interface adaptada para dispositivos móveis.
+#### **su.json** - Configuração de Widgets e Campos de Dados
+- **Propósito**: Define estrutura de dados da ECU, widgets disponíveis, campos dinâmicos
+- **Formato**: Array de widgets com propriedades específicas
+- **Carregado por**: `ecu-manager.js` → distribuído para outros módulos
 
-## Funcionamento dos Arquivos e Funções
+---
 
-### index.html
-Estrutura principal da interface web. Inclui scripts, estilos, área de navegação (`treeView`), área de widgets (`widgetsArea`), botões de salvar/recarregar, barra de status, busca, breadcrumbs.
+## 🔄 Ordem de Inicialização
 
-### style.css
-Define cores, layout, responsividade, estilos dos widgets, gráficos, diálogos, notificações, botões, tooltips, indicadores de status.
+```
+index.html
+  ↓ Carrega scripts em ordem:
+  1. cookies.js           → StorageManager (abstração de persistência)
+  2. notifications.js     → Sistema de notificações
+  3. dialogs.js          → Caixas de diálogo
+  4. history.js          → Histórico de ações
+  5. table3d-controller.js → Widget Table3D
+  6. widgets.js          → Widget comum (gauge, bar, etc)
+  7. ecu-communication.js → Comunicação com ECU
+  8. ecu-manager.js      → Carrega su.json, coordena sistema
+  9. config-export-import.js → Import/export de configurações
+  10. common-info.js     → Dados comuns (lê su.json)
+  11. dashboard-scale.js → Responsividade do dashboard
+  12. dashboard.js       → Sistema de dashboard configurável
+  13. main.js            → Coordenação final
+```
 
-### main.js
-- Inicializa o sistema ao carregar a página.
-- Instala atalhos globais (Ctrl+Z/Y para undo/redo).
-- Gerencia eventos de orientação e integração com histórico global.
+---
 
-### ecu-manager.js
-- Carrega e renderiza a árvore de navegação.
+## 📁 Detalhamento de Arquivos
+
+### **cookies.js** - Abstração de Persistência
+**Responsabilidades:**
+- Detectar/carregar ambiente de app.json
+- Abstrair localStorage vs outras plataformas
+- Serializar/desserializar com metadata
+
+**Classe Principal:**
+```javascript
+class StorageManager {
+  loadAppConfig()          // Carrega app.json
+  getEnvironment()         // Retorna: 'browser' | 'webview' | 'windows'
+  getVersion()             // Retorna versão do app
+  async save(key, data)    // Salva com metadata
+  async load(key)          // Carrega dados
+  async remove(key)        // Remove dados
+}
+```
+
+**Uso:**
+```javascript
+await window.StorageManager.save('key', data);
+const data = await window.StorageManager.load('key');
+```
+
+---
+
+### **ecu-communication.js** - Comunicação com ECU
+**Responsabilidades:**
+- Comunicação com ECU (serial, WebSocket, HTTP)
+- Enviar/receber comandos
+- Gerenciar status online/offline
+- Suporte a múltiplos ambientes
+
+**Classe Principal:**
+```javascript
+class ECUCommunication {
+  loadAppConfig()           // Carrega app.json
+  getEnvironment()          // Retorna ambiente atual
+  isEnvironment(env)        // Verifica ambiente
+  async sendCommand(cmd, val) // Envia comando
+  async queryCommand(cmd)   // Consulta valor
+  setConfig(config)         // Define configuração
+  setStatus(online)         // Atualiza status
+  getStatus()              // Retorna status
+  getDefaultValue(cmd)      // Valor padrão para comando
+}
+```
+
+**Uso:**
+```javascript
+const ecuManager = new ECUCommunication();
+await ecuManager.sendCommand('RPM', 3000);
+const rpm = await ecuManager.queryCommand('RPM');
+```
+
+---
+
+### **ecu-manager.js** - Coordenador Principal
+**Responsabilidades:**
+- Carregar su.json
+- Distribuir configuração para módulos
+- Coordenar atualização de widgets
+- Gerenciar dados dinâmicos
+
+**Funções Principais:**
+```javascript
+loadConfig()               // Carrega su.json
+getDataFields()           // Retorna campos disponíveis
+notifyUpdate(data)        // Notifica alteração de dados
+addEventListener(cb)      // Registra listener
+removeEventListener(cb)   // Remove listener
+```
+
+**Dados Globais:**
+```javascript
+window.ecuManager = new ECUCommunication()
+window.ecuManager.config = { /* su.json */ }
+```
+
+---
+
+### **common-info.js** - Sistema de Dados Dinâmicos
+**Responsabilidades:**
+- Manter estado global de dados da ECU
+- Sincronizar com ecu-communication
+- Disparar eventos de atualização
+
+**Classe Principal:**
+```javascript
+class CommonInfo {
+  constructor()
+  addListener(callback)        // Adiciona listener para mudanças
+  removeListener(callback)     // Remove listener
+  notifyListeners()           // Dispara evento commoninfoUpdated
+  async updateFromECU()       // Atualiza valores da ECU
+  static get data()           // Dados atuais
+  static get config()         // Configuração (su.json)
+}
+```
+
+**Eventos:**
+- `commoninfoUpdated`: Disparado quando dados mudam
+
+**Dados Globais:**
+```javascript
+window.CommonInfo.data    // { fieldId: { value, label, ... } }
+window.CommonInfo.config  // { dataFields: [...] }
+```
+
+---
+
+### **dashboard.js** - Sistema de Dashboard Configurável
+**Responsabilidades:**
+- Renderizar elementos do dashboard
+- Sincronizar com CommonInfo
+- Permitir edição/reposicionamento
+- Exportar/importar configurações
+
+**Funções Principais:**
+```javascript
+renderViewMode()           // Renderiza visualização
+renderEditMode()          // Renderiza modo edição
+openQuickStatsModal()     // Abre painel de stats rápidos
+generateShareCode()       // Gera código de compartilhamento
+importShareCode(code)     // Importa configuração
+saveElements(list)        // Salva elementos
+loadElements()           // Carrega elementos
+```
+
+**Tipos de Elementos:**
+- `gauge`: Velocímetro
+- `bar`: Barra de preenchimento
+- `bar-marker`: Barra com marcador
+- `bar-pointer`: Barra com ponteiro vertical
+- `led`: LED (acende/apaga)
+- `text`: Texto estático
+- `conditional-text`: Texto condicionado ao valor
+- `button`: Botão de ação
+- `digital`: Número digital
+
+**Persistência:**
+- Chave: `dsw_dashboard_elements_v1`
+- Formato: JSON com metadata (StorageManager)
+
+---
+
+### **widgets.js** - Componentes de Visualização
+**Responsabilidades:**
+- Criar elementos visuais (gauge, bar, etc)
+- Aplicar estilos CSS
+- Gerenciar interatividade
+
+**Widgets Suportados:**
+```javascript
+createGaugeElement(e)       // Velocímetro/medidor
+createBarElement(e)         // Barra de preenchimento
+createBarMarkerElement(e)   // Barra com marcador
+createBarPointerElement(e)  // Barra com ponteiro
+createLEDElement(e)        // LED (acende/apaga/pisca)
+createTextElement(e)       // Texto estático
+createConditionalText(e)   // Texto condicionado
+createButtonElement(e)     // Botão
+createDigitalElement(e)    // Display numérico
+```
+
+---
+
+## 🔄 Fluxo de Dados
+
+### Inicialização
+```
+1. index.html carrega
+2. cookies.js: StorageManager carrega app.json
+3. ecu-communication.js: ECUCommunication carrega app.json
+4. ecu-manager.js: Carrega su.json via fetch()
+5. common-info.js: Inicializa CommonInfo com su.json
+6. dashboard.js: Carrega elementos salvos via StorageManager
+7. main.js: Sincroniza CommonInfo com valores iniciais
+8. Widgets iniciais renderizados
+```
+
+### Atualização de Dados
+```
+ECU (hardware/simulador)
+  ↓
+ecu-communication.queryCommand() 
+  ↓
+common-info.updateFromECU()
+  ↓
+window.dispatchEvent('commoninfoUpdated')
+  ↓
+dashboard.updateQuickStats()
+  ↓
+updateElement() para cada widget
+  ↓
+Widgets atualizam em tempo real
+```
+
+### Atualização Visual
+```
+CommonInfo.notifyListeners()
+  ↓
+dispatchEvent('commoninfoUpdated')
+  ↓
+dashboard.updateQuickStats()  // Atualiza painel rápido
+dashboard.updateElement()      // Atualiza cada widget
+  ↓
+Widget altera:
+  - Valor exibido
+  - Cor
+  - Preenchimento (bar)
+  - Estado (LED: on/off/blink)
+  - Ponteiro (bar-pointer)
+  - Rotação (gauge)
+```
+
+---
+
+## ⚙️ Configuração com app.json
+
+### Ambientes Suportados
+
+#### **Browser (Padrão)**
+```json
+{
+  "version": "1.0",
+  "environment": "browser",
+  "timestamp": 1702436400,
+  "data": {}
+}
+```
+- Usa `localStorage` para persistência
+- Comunicação simulada com ECU
+- Ideal para desenvolvimento/web
+
+#### **WebView** (Futuro)
+```json
+{
+  "version": "1.0",
+  "environment": "webview",
+  "timestamp": 1702436400,
+  "data": {}
+}
+```
+- Integração com Electron, React Native
+- Acesso a APIs nativas
+- Comunicação com backend local
+
+#### **Windows** (Futuro)
+```json
+{
+  "version": "1.0",
+  "environment": "windows",
+  "timestamp": 1702436400,
+  "data": {}
+}
+```
+- Integração com C#/.NET
+- Comunicação via bridge API
+- Acesso a recursos Windows
+
+### Detecção de Ambiente
+```javascript
+// Em qualquer arquivo:
+const env = window.StorageManager.getEnvironment(); 
+// 'browser' | 'webview' | 'windows'
+
+// Executar lógica específica:
+if (window.ecuManager.isEnvironment('browser')) {
+  // Usar localStorage
+} else if (window.ecuManager.isEnvironment('windows')) {
+  // Usar Windows API
+}
+```
+
+---
+
+## 📊 Estrutura de su.json
+
+```json
+{
+  "dataFields": [
+    {
+      "id": "RPM",
+      "title": "Rotação do Motor",
+      "unit": "rpm",
+      "min": 0,
+      "max": 8000,
+      "default": 1000
+    },
+    {
+      "id": "SPEED",
+      "title": "Velocidade",
+      "unit": "km/h",
+      "min": 0,
+      "max": 300,
+      "default": 0
+    }
+  ],
+  "widgets": [
+    {
+      "id": "speed_gauge",
+      "type": "gauge",
+      "label": "Velocidade",
+      "fieldId": "SPEED",
+      "min": 0,
+      "max": 300,
+      "color": "#8B0000"
+    }
+  ]
+}
+```
+
+---
+
+## 🎨 Sistema de Cores Dinâmicas
+
+### Cores do Tema (CSS)
+```css
+--primary-red: #8B0000      /* Cor principal */
+--light-red: #ff6666        /* Vermelho claro */
+--bg-dark: #1a1a1a          /* Fundo escuro */
+--bg-darker: #0f0f0f        /* Fundo mais escuro */
+--text-light: #b0b0b0       /* Texto claro */
+--border-color: #333333     /* Borda */
+```
+
+### Cores Dinâmicas por Widget
+Cada widget pode ter cores customizadas:
+```javascript
+{
+  "color": "#FF0000",        // Cor principal
+  "coldColor": "#0000FF",    // Cor fria (início)
+  "hotColor": "#FF0000",     // Cor quente (fim)
+  "colorOff": "#333333",     // Cor desligada (LED)
+  "dangerColor": "#FF0000",  // Zona de perigo
+  "warningColor": "#FFAA00"  // Zona de alerta
+}
+```
+
+---
+
+## 🚀 Quick Stats (Dashboard Externa)
+
+Sistema de exibição rápida de até 4 valores na barra superior.
+
+### Configuração
+```javascript
+window.quickStatsConfig = [
+  {
+    id: 'stat1',
+    label: 'RPM',
+    fieldId: 'RPM',
+    divisor: 1,
+    color: '#FFD700',
+    enabled: true
+  },
+  // ... até 4 slots
+]
+```
+
+### Armazenamento
+- Chave: `dsw_quick_stats_config_v1`
+- Métodos: `saveQuickStatsConfig()`, `initializeQuickStats()`
+
+### Sincronização
+- Listener: `commoninfoUpdated` event
+- Função: `updateQuickStats()`
+
+---
+
+## 📤 Export/Import
+
+### Versão 2 (v2) - Com Quick Stats
+Código: `DSWCFG2:...`
+
+Inclui:
+- Dashboard elements
+- Quick Stats config
+
+### Versão 1 (v1) - Legacy
+Código: `DSWCFG1:...`
+
+Inclui:
+- Apenas dashboard elements
+
+### Compatibilidade
+- Importa v1 e v2
+- Exporta sempre em v2
+- Retrocompatível
+
+---
+
+## 🐛 Problemas Conhecidos e Soluções
+
+### Bar-Pointer - Ponteiro Não Marca
+**Status**: ✅ CORRIGIDO
+- Ponteiro agora atualiza corretamente ao mudar valor
+
+### LED - Não Acende/Pisca
+**Status**: ✅ CORRIGIDO
+- LED agora muda de cor e pisca conforme threshold
+- Estado sincronizado com dados
+
+### Dados Não Carregam
+**Status**: ✅ CORRIGIDO
+- CommonInfo agora carrega corretamente de su.json
+- Sincronização entre módulos melhorada
+
+---
+
+## 🎯 Próximos Passos
+
+1. **Implementar ambientes** (webview, windows)
+2. **Adicionar sincronização com backend**
+3. **Implementar logging avançado**
+4. **Adicionar autenticação**
+5. **Criar editor visual de widgets**
+
+---
+
+**Versão**: 1.0  
+**Data**: Dezembro 2025  
+**Ambiente**: Browser (padrão)
 - Gerencia seleção de nó, breadcrumbs, status de modificação/salvo.
 - Renderiza widgets conforme seleção.
 - Controla busca, proteção de recarregar/voltar, integração com histórico global.
