@@ -615,8 +615,7 @@
         label.textContent = e.label || e.id;
 
         const led = document.createElement('div');
-            led.style.width = '100%';
-            led.style.aspectRatio = '1/1';
+        led.style.width = '100%';
         led.style.aspectRatio = '1/1';
         led.style.borderRadius = '50%';
         const isOn = e.value >= e.threshold;
@@ -718,7 +717,7 @@
         fill.style.width = ((e.value - e.min) / (e.max - e.min)) * 100 + '%';
         fill.style.transition = 'width 0.3s ease';
         fill.style.boxShadow = `inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 0 8px ${e.color || 'rgba(139, 0, 0, 0.6)'}`;
-        bar.appendChild(fill);
+            bar.appendChild(fill);
 
         // Marcador visual (triângulo) mostrando markerValue
         if (e.markerValue !== undefined && e.markerValue !== null) {
@@ -741,27 +740,7 @@
             bar._markerIndicator = marker;
         }
 
-        barContainer.appendChild(bar);
-        if (e.markerValue !== undefined && e.markerValue !== null) {
-            const markerPercent = Math.max(0, Math.min(100, ((e.markerValue - e.min) / (e.max - e.min)) * 100));
-            const marker = document.createElement('div');
-            marker.style.position = 'absolute';
-            marker.style.top = '-8px';
-            marker.style.left = markerPercent + '%';
-            marker.style.transform = 'translateX(-50%)';
-            marker.style.width = '0';
-            marker.style.height = '0';
-            marker.style.borderLeft = '6px solid transparent';
-            marker.style.borderRight = '6px solid transparent';
-            marker.style.borderTop = '10px solid ' + (e.markerColor || '#FFD700');
-            marker.style.filter = 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0.8))';
-            marker.style.zIndex = '10';
-            marker.title = `Marcador: ${e.markerValue}`;
-            bar.appendChild(marker);
-            bar._markerIndicator = marker;
-        }
-
-        barContainer.appendChild(bar);
+        barContainer.appendChild(bar);        barContainer.appendChild(bar);
         cont.appendChild(label);
         cont.appendChild(barContainer);
 
@@ -803,6 +782,104 @@
         wrapper.appendChild(textDiv);
         wrapper._textEl = textDiv;
         wrapper._type = 'text';
+        return wrapper;
+    }
+
+    function createBarPointerElement(e) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'dashboard-marker bar-pointer';
+        wrapper.dataset.id = e.id;
+        wrapper.style.left = (e.pos && e.pos.x != null ? e.pos.x : 50) + '%';
+        wrapper.style.top = (e.pos && e.pos.y != null ? e.pos.y : 50) + '%';
+        
+        const scale = (e.sizeScale || 100) / 100;
+        const baseWidthPercent = 20;
+        const baseHeightPercent = 12;
+        wrapper.style.width = (baseWidthPercent * scale) + '%';
+        wrapper.style.height = (baseHeightPercent * scale) + '%';
+
+        const cont = document.createElement('div');
+        cont.style.display = 'flex';
+        cont.style.flexDirection = 'column';
+        cont.style.gap = '8px';
+        cont.style.padding = '8px';
+        cont.style.width = '100%';
+        cont.style.height = '100%';
+
+        const label = document.createElement('div');
+        label.style.fontSize = '13px';
+        label.style.color = 'var(--text-light)';
+        label.style.fontWeight = '600';
+        label.textContent = e.label || e.id;
+
+        const barContainer = document.createElement('div');
+        barContainer.style.display = 'flex';
+        barContainer.style.alignItems = 'center';
+        barContainer.style.gap = '8px';
+        barContainer.style.width = '100%';
+        barContainer.style.flex = '1';
+
+        if (e.icon) {
+            const iconEl = document.createElement('i');
+            iconEl.className = `bi bi-${e.icon}`;
+            iconEl.style.fontSize = '18px';
+            iconEl.style.color = e.color || 'var(--primary-red)';
+            iconEl.style.flexShrink = '0';
+            iconEl.style.filter = `drop-shadow(0 0 3px ${e.color || 'rgba(139, 0, 0, 0.6)'})`;
+            barContainer.appendChild(iconEl);
+        }
+
+        const bar = document.createElement('div');
+        bar.style.flex = '1';
+        bar.style.height = '24px';
+        bar.style.background = 'linear-gradient(to bottom, rgba(50, 50, 50, 0.8), rgba(25, 25, 25, 0.9))';
+        bar.style.border = '1px solid #8B0000';
+        bar.style.borderRadius = '12px';
+        bar.style.overflow = 'hidden';
+        bar.style.position = 'relative';
+        bar.style.boxShadow = 'inset 0 2px 4px rgba(0, 0, 0, 0.5)';
+
+        const fill = document.createElement('div');
+        fill.style.height = '100%';
+        fill.style.width = ((e.value - e.min) / (e.max - e.min)) * 100 + '%';
+        fill.style.transition = 'width 0.3s ease';
+        fill.style.background = `linear-gradient(to right, ${e.color || 'var(--primary-red)'}, rgba(165, 42, 42, 0.8))`;
+        fill.style.boxShadow = `inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 0 8px ${e.color || 'rgba(139, 0, 0, 0.6)'}`;
+        bar.appendChild(fill);
+
+        // Ponteiro vertical mostrando valor atual
+        const pointerPercent = Math.max(0, Math.min(100, ((e.value - e.min) / (e.max - e.min)) * 100));
+        const pointer = document.createElement('div');
+        pointer.style.position = 'absolute';
+        pointer.style.left = pointerPercent + '%';
+        pointer.style.top = '0';
+        pointer.style.width = '3px';
+        pointer.style.height = '100%';
+        pointer.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
+        pointer.style.transform = 'translateX(-50%)';
+        pointer.style.boxShadow = '0 0 6px rgba(255, 255, 255, 0.6), 0 0 12px ' + (e.color || 'rgba(139, 0, 0, 0.8)');
+        pointer.style.zIndex = '5';
+        bar.appendChild(pointer);
+        bar._pointerIndicator = pointer;
+
+        barContainer.appendChild(bar);
+        cont.appendChild(label);
+        cont.appendChild(barContainer);
+
+        const value = document.createElement('div');
+        value.style.fontSize = '12px';
+        value.style.color = 'var(--light-red)';
+        value.style.textAlign = 'right';
+        value.style.fontWeight = '600';
+        const unitStr = e.unit ? ` ${e.unit}` : '';
+        value.textContent = e.value.toFixed(1) + ' / ' + e.max.toFixed(1) + unitStr;
+        cont.appendChild(value);
+
+        wrapper.appendChild(cont);
+        wrapper._fillEl = fill;
+        wrapper._pointerEl = bar;
+        wrapper._valueEl = value;
+        wrapper._type = 'bar-pointer';
         return wrapper;
     }
 
@@ -874,9 +951,11 @@
         textDiv.style.fontSize = (e.fontSize || 16) + 'px';
         textDiv.style.fontWeight = e.fontWeight || '600';
         textDiv.style.textAlign = 'center';
-        textDiv.style.padding = '8px 12px';
-        textDiv.style.borderRadius = '6px';
+        textDiv.style.padding = '10px 14px';
+        textDiv.style.borderRadius = '8px';
         textDiv.style.whiteSpace = 'nowrap';
+        textDiv.style.border = '2px solid';
+        textDiv.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)';
 
         let activeCondition = e.conditions && e.conditions[0];
         if (e.conditions) {
@@ -889,8 +968,9 @@
         }
 
         textDiv.textContent = activeCondition ? activeCondition.text : e.label || '';
-        textDiv.style.color = activeCondition ? (activeCondition.color || 'white') : 'var(--text-light)';
-        textDiv.style.background = activeCondition ? (activeCondition.background || 'rgba(255,0,0,0.3)') : 'rgba(0,0,0,0.2)';
+        textDiv.style.color = activeCondition ? (activeCondition.textColor || '#ffffff') : (e.defaultTextColor || '#ffffff');
+        textDiv.style.background = activeCondition ? (activeCondition.backgroundColor || 'rgba(255,0,0,0.3)') : (e.defaultBackgroundColor || 'rgba(0,0,0,0.2)');
+        textDiv.style.borderColor = activeCondition ? (activeCondition.borderColor || 'rgba(255,0,0,0.5)') : (e.defaultBorderColor || 'rgba(0,0,0,0.3)');
 
         wrapper.appendChild(textDiv);
         wrapper._textEl = textDiv;
@@ -1180,6 +1260,7 @@
         if (e.type === 'text') return createTextElement(e);
         if (e.type === 'digital') return createDigitalElement(e);
         if (e.type === 'bar-marker') return createBarMarkerElement(e);
+        if (e.type === 'bar-pointer') return createBarPointerElement(e);
         if (e.type === 'conditional-text') return createConditionalTextElement(e);
         if (e.type === 'button') return createButtonElement(e);
         return createGaugeElement(e);
@@ -1281,6 +1362,16 @@
                 const markerPercent = Math.max(0, Math.min(100, ((e.markerValue - e.min) / (e.max - e.min)) * 100));
                 el._fillEl._markerIndicator.style.left = markerPercent + '%';
             }
+        } else if (el._type === 'bar-pointer' && el._fillEl) {
+            const pct = ((newValue - e.min) / (e.max - e.min)) * 100;
+            const clampedPct = Math.max(0, Math.min(100, pct));
+            el._fillEl.style.width = clampedPct + '%';
+            if (el._valueEl) el._valueEl.textContent = newValue.toFixed(1) + ' / ' + e.max.toFixed(1) + (e.unit ? ` ${e.unit}` : '');
+            
+            // Atualizar posição do ponteiro vertical
+            if (el._pointerEl && el._pointerEl._pointerIndicator) {
+                el._pointerEl._pointerIndicator.style.left = clampedPct + '%';
+            }
         } else if (el._type === 'led' && el._ledEl) {
             const isActive = newValue >= e.threshold;
             const ledColor = isActive ? (e.color || '#00FF00') : (e.colorOff || '#333');
@@ -1292,6 +1383,21 @@
             if (iconEl && e.icon) {
                 iconEl.style.color = isActive ? 'white' : '#999';
                 iconEl.style.textShadow = isActive ? `0 0 6px ${e.color || '#00FF00'}` : 'none';
+            }
+        } else if (el._type === 'conditional-text' && el._textEl) {
+            // Atualizar conditional-text quando valor muda
+            if (e.conditions && Array.isArray(e.conditions)) {
+                let activeCondition = e.conditions[0];
+                for (let cond of e.conditions) {
+                    if (eval(`${newValue} ${cond.operator} ${cond.threshold}`)) {
+                        activeCondition = cond;
+                        break;
+                    }
+                }
+                el._textEl.textContent = activeCondition ? activeCondition.text : (e.label || '');
+                el._textEl.style.color = activeCondition ? (activeCondition.textColor || '#ffffff') : (e.defaultTextColor || '#ffffff');
+                el._textEl.style.background = activeCondition ? (activeCondition.backgroundColor || 'rgba(255,0,0,0.3)') : (e.defaultBackgroundColor || 'rgba(0,0,0,0.2)');
+                el._textEl.style.borderColor = activeCondition ? (activeCondition.borderColor || 'rgba(255,0,0,0.5)') : (e.defaultBorderColor || 'rgba(0,0,0,0.3)');
             }
         } else if (el._type === 'digital' && el._digitEl) {
             // animate numeric change
@@ -1433,7 +1539,7 @@
             let baseW = 10; // percent of design width
             let baseH = 10; // percent of design height
             if (elementWithData.type === 'gauge') { baseW = 12; baseH = 12; }
-            else if (elementWithData.type === 'bar' || elementWithData.type === 'bar-marker') { baseW = 28; baseH = 10; }
+            else if (elementWithData.type === 'bar' || elementWithData.type === 'bar-marker' || elementWithData.type === 'bar-pointer') { baseW = 28; baseH = 10; }
             else if (elementWithData.type === 'led') { baseW = 6; baseH = 8; }
             else if (elementWithData.type === 'text' || elementWithData.type === 'conditional-text') { baseW = 12; baseH = 6; }
 
@@ -1891,7 +1997,7 @@
             // compute base size
             let baseW = 10, baseH = 10;
             if (e.type === 'gauge') { baseW = 12; baseH = 12; }
-            else if (e.type === 'bar' || e.type === 'bar-marker') { baseW = 28; baseH = 10; }
+            else if (e.type === 'bar' || e.type === 'bar-marker' || e.type === 'bar-pointer') { baseW = 28; baseH = 10; }
             else if (e.type === 'led') { baseW = 6; baseH = 8; }
             else if (e.type === 'text' || e.type === 'conditional-text') { baseW = 12; baseH = 6; }
             const sizeScale = (e.sizeScale || 100) / 100;
@@ -2074,6 +2180,26 @@
             
             const configBtn = makeTabBtn('config', typeName);
 
+            // Determinar quais abas devem estar disponíveis
+            let hasConfigTab = true;
+            if (e.type === 'button') {
+                valuesBtn.style.opacity = '0.5';
+                valuesBtn.style.cursor = 'not-allowed';
+                valuesBtn.style.pointerEvents = 'none';
+                valuesBtn.title = 'Botões não têm valor';
+            }
+            
+            // Se não houver campos específicos de configuração, bloquear a aba
+            let typeHasConfig = ['gauge', 'bar', 'bar-marker', 'led', 'text', 'conditional-text', 'button', 'digital'].includes(e.type);
+            if (!typeHasConfig) hasConfigTab = false;
+            
+            if (!hasConfigTab) {
+                configBtn.style.opacity = '0.5';
+                configBtn.style.cursor = 'not-allowed';
+                configBtn.style.pointerEvents = 'none';
+                configBtn.title = 'Sem configurações específicas';
+            }
+            
             tabsHeader.appendChild(visualBtn);
             tabsHeader.appendChild(labelsBtn);
             tabsHeader.appendChild(valuesBtn);
@@ -2096,6 +2222,7 @@
             panes.visual.style.display = 'block';
 
             function switchTo(tabId) {
+                if (!hasConfigTab && tabId === 'config') return; // não permitir ir pra config se não tiver
                 Object.keys(panes).forEach(k => panes[k].style.display = (k === tabId ? 'block' : 'none'));
                 Object.keys(tabButtons).forEach(k => {
                     const b = tabButtons[k];
@@ -2108,14 +2235,6 @@
             labelsBtn.addEventListener('click', () => switchTo('labels'));
             valuesBtn.addEventListener('click', () => switchTo('values'));
             configBtn.addEventListener('click', () => switchTo('config'));
-            
-            // Bloquear aba "Valores" para botões (não têm valor)
-            if (e.type === 'button') {
-                valuesBtn.style.opacity = '0.5';
-                valuesBtn.style.cursor = 'not-allowed';
-                valuesBtn.style.pointerEvents = 'none';
-                valuesBtn.title = 'Botões não têm valor';
-            }
 
             const removeBtn = document.createElement('button');
             removeBtn.textContent = '✕ Remover';
@@ -2195,7 +2314,7 @@
 
             const commonFields = [
                 { label: 'ID', key: 'id', type: 'text' },
-                { label: 'Tipo', key: 'type', type: 'select', options: ['gauge', 'bar', 'bar-marker', 'led', 'text', 'conditional-text', 'button', 'digital'] },
+                { label: 'Tipo', key: 'type', type: 'select', options: ['gauge', 'bar', 'bar-marker', 'bar-pointer', 'led', 'text', 'conditional-text', 'button', 'digital'] },
                 { label: 'Cor', key: 'color', type: 'color' },
                 { label: 'Tamanho (%)', key: 'sizeScale', type: 'range', min: '25', max: '444', step: '5' },
                 { label: 'Ícone (Bootstrap)', key: 'icon', type: 'text', placeholder: 'Ex: speedometer, power, fuel-pump' },
@@ -2252,6 +2371,13 @@
                 { label: 'Cor Marcador', key: 'markerColor', type: 'color' }
             ];
 
+            const barPointerFields = [
+                { label: 'Mín', key: 'min', type: 'number' },
+                { label: 'Máx', key: 'max', type: 'number' },
+                { label: 'Rótulo (Label)', key: 'label', type: 'text', placeholder: 'Ex: Velocidade, Pressão' },
+                { label: 'Unidade', key: 'unit', type: 'text', placeholder: 'Ex: km/h, bar, psi' }
+            ];
+
             const ledFields = [
                 { label: 'Rótulo (Label)', key: 'label', type: 'text', placeholder: 'Ex: Sensor, Alerta' },
                 { label: 'Limiar', key: 'threshold', type: 'number' },
@@ -2268,7 +2394,10 @@
 
             const conditionalTextFields = [
                 { label: 'Tamanho Fonte (px)', key: 'fontSize', type: 'number' },
-                { label: 'Peso (400, 600, 700)', key: 'fontWeight', type: 'number' }
+                { label: 'Peso (400, 600, 700)', key: 'fontWeight', type: 'number' },
+                { label: 'Cor do Texto Padrão', key: 'defaultTextColor', type: 'color' },
+                { label: 'Cor de Fundo Padrão', key: 'defaultBackgroundColor', type: 'color' },
+                { label: 'Cor da Orla Padrão', key: 'defaultBorderColor', type: 'color' }
             ];
 
             const buttonFields = [
@@ -2290,6 +2419,8 @@
                 fieldsToShow = [...fieldsToShow, ...barFields];
             } else if (e.type === 'bar-marker') {
                 fieldsToShow = [...fieldsToShow, ...barMarkerFields];
+            } else if (e.type === 'bar-pointer') {
+                fieldsToShow = [...fieldsToShow, ...barPointerFields];
             } else if (e.type === 'digital') {
                 fieldsToShow = [...fieldsToShow, ...digitalFields];
             } else if (e.type === 'led') {
@@ -2913,38 +3044,112 @@
                     conds.forEach((c, ci) => {
                         const row = document.createElement('div');
                         row.style.display = 'grid';
-                        row.style.gridTemplateColumns = 'auto auto 1fr auto auto';
-                        row.style.gap = '8px';
+                        row.style.gridTemplateColumns = 'auto auto 1fr auto auto auto auto auto';
+                        row.style.gap = '6px';
+                        row.style.alignItems = 'center';
+                        row.style.padding = '8px';
+                        row.style.background = 'rgba(0,0,0,0.1)';
+                        row.style.borderRadius = '4px';
+                        row.style.marginBottom = '6px';
 
                         const opSelect = document.createElement('select');
+                        opSelect.style.padding = '4px 6px';
+                        opSelect.style.background = 'var(--bg-dark)';
+                        opSelect.style.color = 'var(--text-light)';
+                        opSelect.style.border = '1px solid var(--border-color)';
+                        opSelect.style.borderRadius = '4px';
                         ['>=','>','<=','<','==','!='].forEach(o => { const oEl = document.createElement('option'); oEl.value = o; oEl.textContent = o; if (c.operator === o) oEl.selected = true; opSelect.appendChild(oEl); });
-                        const thr = document.createElement('input'); thr.type = 'number'; thr.value = c.threshold || 0; thr.style.padding = '6px'; thr.style.background='var(--bg-dark)'; thr.style.color='var(--text-light)';
-                        const txt = document.createElement('input'); txt.type = 'text'; txt.value = c.text || ''; txt.style.padding = '6px'; txt.style.background='var(--bg-dark)'; txt.style.color='var(--text-light)';
-                        const color = document.createElement('input'); color.type = 'color'; color.value = c.color || '#ffffff';
-                        const rem = document.createElement('button'); rem.textContent = '✕'; rem.title = 'Remover condição'; rem.style.background='transparent'; rem.style.border='1px solid var(--border-color)'; rem.style.borderRadius='4px'; rem.style.color='var(--text-light)';
+                        
+                        const thr = document.createElement('input');
+                        thr.type = 'number';
+                        thr.value = c.threshold || 0;
+                        thr.style.padding = '4px 6px';
+                        thr.style.width = '70px';
+                        thr.style.background = 'var(--bg-dark)';
+                        thr.style.color = 'var(--text-light)';
+                        thr.style.border = '1px solid var(--border-color)';
+                        thr.style.borderRadius = '4px';
+                        
+                        const txt = document.createElement('input');
+                        txt.type = 'text';
+                        txt.value = c.text || '';
+                        txt.placeholder = 'Texto a exibir';
+                        txt.style.padding = '4px 6px';
+                        txt.style.background = 'var(--bg-dark)';
+                        txt.style.color = 'var(--text-light)';
+                        txt.style.border = '1px solid var(--border-color)';
+                        txt.style.borderRadius = '4px';
+                        
+                        const textColor = document.createElement('input');
+                        textColor.type = 'color';
+                        textColor.value = c.textColor || '#ffffff';
+                        textColor.title = 'Cor do texto';
+                        textColor.style.width = '40px';
+                        textColor.style.height = '32px';
+                        textColor.style.cursor = 'pointer';
+                        textColor.style.border = '1px solid var(--border-color)';
+                        
+                        const bgColor = document.createElement('input');
+                        bgColor.type = 'color';
+                        bgColor.value = c.backgroundColor || '#ff0000';
+                        bgColor.title = 'Cor de fundo';
+                        bgColor.style.width = '40px';
+                        bgColor.style.height = '32px';
+                        bgColor.style.cursor = 'pointer';
+                        bgColor.style.border = '1px solid var(--border-color)';
+                        
+                        const borderColorInput = document.createElement('input');
+                        borderColorInput.type = 'color';
+                        borderColorInput.value = c.borderColor || '#ff6666';
+                        borderColorInput.title = 'Cor da orla';
+                        borderColorInput.style.width = '40px';
+                        borderColorInput.style.height = '32px';
+                        borderColorInput.style.cursor = 'pointer';
+                        borderColorInput.style.border = '1px solid var(--border-color)';
+                        
+                        const rem = document.createElement('button');
+                        rem.textContent = '✕';
+                        rem.title = 'Remover condição';
+                        rem.style.background = 'transparent';
+                        rem.style.border = '1px solid var(--border-color)';
+                        rem.style.borderRadius = '4px';
+                        rem.style.color = 'var(--text-light)';
+                        rem.style.padding = '4px 8px';
+                        rem.style.cursor = 'pointer';
 
                         opSelect.addEventListener('change', () => { elements[idx].conditions[ci].operator = opSelect.value; try { updatePreviewForElement(idx); } catch (err) {} });
                         thr.addEventListener('input', () => { elements[idx].conditions[ci].threshold = parseFloat(thr.value) || 0; try { updatePreviewForElement(idx); } catch (err) {} });
                         txt.addEventListener('input', () => { elements[idx].conditions[ci].text = txt.value; try { updatePreviewForElement(idx); } catch (err) {} });
-                        color.addEventListener('change', () => { elements[idx].conditions[ci].color = color.value; try { updatePreviewForElement(idx); } catch (err) {} });
+                        textColor.addEventListener('change', () => { elements[idx].conditions[ci].textColor = textColor.value; try { updatePreviewForElement(idx); } catch (err) {} });
+                        bgColor.addEventListener('change', () => { elements[idx].conditions[ci].backgroundColor = bgColor.value; try { updatePreviewForElement(idx); } catch (err) {} });
+                        borderColorInput.addEventListener('change', () => { elements[idx].conditions[ci].borderColor = borderColorInput.value; try { updatePreviewForElement(idx); } catch (err) {} });
                         rem.addEventListener('click', () => { elements[idx].conditions.splice(ci,1); renderConditions(); try { updatePreviewForElement(idx); } catch (err) {} });
 
-                        row.appendChild(opSelect); row.appendChild(thr); row.appendChild(txt); row.appendChild(color); row.appendChild(rem);
+                        row.appendChild(opSelect);
+                        row.appendChild(thr);
+                        row.appendChild(txt);
+                        row.appendChild(textColor);
+                        row.appendChild(bgColor);
+                        row.appendChild(borderColorInput);
+                        row.appendChild(rem);
                         list.appendChild(row);
                     });
                 }
 
                 const addBtnCond = document.createElement('button');
-                addBtnCond.textContent = '+ Adicionar condição';
-                addBtnCond.style.marginTop = '8px';
-                addBtnCond.style.padding = '8px';
+                addBtnCond.textContent = '+ Adicionar Condição';
+                addBtnCond.style.marginTop = '12px';
+                addBtnCond.style.padding = '10px 16px';
                 addBtnCond.style.border = 'none';
                 addBtnCond.style.background = 'var(--primary-red)';
                 addBtnCond.style.color = 'white';
                 addBtnCond.style.borderRadius = '6px';
+                addBtnCond.style.fontWeight = '600';
+                addBtnCond.style.cursor = 'pointer';
+                addBtnCond.style.width = '100%';
                 addBtnCond.addEventListener('click', () => {
                     elements[idx].conditions = elements[idx].conditions || [];
-                    elements[idx].conditions.push({ operator: '>=', threshold: 0, text: 'Novo', color: '#ffffff' });
+                    elements[idx].conditions.push({ operator: '>=', threshold: 0, text: 'Novo', textColor: '#ffffff', backgroundColor: '#ff0000', borderColor: '#ff6666' });
                     renderConditions();
                     try { updatePreviewForElement(idx); } catch (err) {}
                 });
@@ -2979,7 +3184,7 @@
             typeSelect.style.background = 'var(--bg-dark)';
             typeSelect.style.color = 'var(--text-light)';
             
-            ['gauge', 'bar', 'bar-marker', 'led', 'text', 'conditional-text', 'button', 'digital'].forEach(t => {
+            ['gauge', 'bar', 'bar-marker', 'bar-pointer', 'led', 'text', 'conditional-text', 'button', 'digital'].forEach(t => {
                 const opt = document.createElement('option');
                 opt.value = t;
                 opt.textContent = t;
@@ -3021,6 +3226,8 @@
                     newElem = { ...baseConfig, value: 0, min: 0, max: 100, sizeScale: 100, color: '#8B0000' };
                 } else if (type === 'bar-marker') {
                     newElem = { ...baseConfig, value: 50, min: 0, max: 100, sizeScale: 100, color: '#8B0000', markerValue: 75, markerColor: '#FFD700' };
+                } else if (type === 'bar-pointer') {
+                    newElem = { ...baseConfig, value: 50, min: 0, max: 100, sizeScale: 100, color: '#8B0000' };
                 } else if (type === 'led') {
                     newElem = { ...baseConfig, value: 0, threshold: 500, color: '#00FF00', colorOff: '#333333', blink: false, blinkRate: 500, sizeScale: 100 };
                 } else if (type === 'text') {
@@ -3028,7 +3235,7 @@
                 } else if (type === 'digital') {
                     newElem = { ...baseConfig, value: 0, min: 0, max: 9999, unit: '', sizeScale: 100, color: '#00ff88' };
                 } else if (type === 'conditional-text') {
-                    newElem = { ...baseConfig, value: 0, fontSize: 16, fontWeight: '600', conditions: [] };
+                    newElem = { ...baseConfig, value: 0, fontSize: 16, fontWeight: '600', defaultTextColor: '#ffffff', defaultBackgroundColor: 'rgba(0,0,0,0.2)', defaultBorderColor: 'rgba(0,0,0,0.3)', conditions: [] };
                 } else if (type === 'button') {
                     // Para botões, usar o primeiro botão configurado como padrão
                     const defaultBtn = dashboardButtonsConfig.length > 0 ? dashboardButtonsConfig[0] : null;
