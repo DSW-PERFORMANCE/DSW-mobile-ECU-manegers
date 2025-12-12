@@ -2236,23 +2236,6 @@
             valuesBtn.addEventListener('click', () => switchTo('values'));
             configBtn.addEventListener('click', () => switchTo('config'));
 
-            // Botão para configurar Quick Stats (Dashboard Externa)
-            const quickStatsBtn = document.createElement('button');
-            quickStatsBtn.textContent = '⚙️ Dashboard Externa';
-            quickStatsBtn.style.width = '100%';
-            quickStatsBtn.style.padding = '10px 12px';
-            quickStatsBtn.style.background = 'linear-gradient(90deg, #8B0000, #ff6666)';
-            quickStatsBtn.style.border = 'none';
-            quickStatsBtn.style.color = 'white';
-            quickStatsBtn.style.borderRadius = '6px';
-            quickStatsBtn.style.cursor = 'pointer';
-            quickStatsBtn.style.marginBottom = '12px';
-            quickStatsBtn.style.fontWeight = '600';
-            quickStatsBtn.addEventListener('click', () => {
-                openQuickStatsModal();
-            });
-            leftBody.appendChild(quickStatsBtn);
-
             const removeBtn = document.createElement('button');
             removeBtn.textContent = '✕ Remover';
             removeBtn.style.width = '100%';
@@ -3588,9 +3571,23 @@
             closeModal();
         });
 
+        const externalDashBtn = document.createElement('button');
+        externalDashBtn.textContent = '⚙️ Dashboard Externa';
+        externalDashBtn.style.padding = '8px 14px';
+        externalDashBtn.style.background = 'linear-gradient(90deg, #8B0000, #ff6666)';
+        externalDashBtn.style.border = 'none';
+        externalDashBtn.style.color = 'white';
+        externalDashBtn.style.borderRadius = '4px';
+        externalDashBtn.style.cursor = 'pointer';
+        externalDashBtn.style.fontWeight = '600';
+        externalDashBtn.addEventListener('click', () => {
+            openQuickStatsModal();
+        });
+
         footer.appendChild(revertBtn);
         footer.appendChild(genBtn);
         footer.appendChild(loadBtn);
+        footer.appendChild(externalDashBtn);
         footer.appendChild(saveBtn);
         frame.appendChild(footer);
 
@@ -3890,7 +3887,7 @@
         overlay.style.display = 'flex';
         overlay.style.justifyContent = 'center';
         overlay.style.alignItems = 'center';
-        overlay.style.zIndex = '10000';
+        overlay.style.zIndex = '20000';
         
         // Criar modal content
         const modalBox = document.createElement('div');
