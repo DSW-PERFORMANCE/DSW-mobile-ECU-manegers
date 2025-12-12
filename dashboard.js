@@ -3572,7 +3572,7 @@
         });
 
         const externalDashBtn = document.createElement('button');
-        externalDashBtn.textContent = '⚙️ Dashboard Externa';
+        externalDashBtn.textContent = 'Dashboard Externa';
         externalDashBtn.style.padding = '8px 14px';
         externalDashBtn.style.background = 'linear-gradient(90deg, #8B0000, #ff6666)';
         externalDashBtn.style.border = 'none';
