@@ -532,6 +532,8 @@
                         }
                     });
                 }
+                // Disparar evento customizado para quick stats
+                window.dispatchEvent(new Event('commoninfoUpdated'));
             } catch (err) {
                 console.error('[CommonInfo] 🔴 Erro ao notificar listeners:', err);
             }

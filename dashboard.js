@@ -2236,6 +2236,23 @@
             valuesBtn.addEventListener('click', () => switchTo('values'));
             configBtn.addEventListener('click', () => switchTo('config'));
 
+            // Botão para configurar Quick Stats (Dashboard Externa)
+            const quickStatsBtn = document.createElement('button');
+            quickStatsBtn.textContent = '⚙️ Dashboard Externa';
+            quickStatsBtn.style.width = '100%';
+            quickStatsBtn.style.padding = '10px 12px';
+            quickStatsBtn.style.background = 'linear-gradient(90deg, #8B0000, #ff6666)';
+            quickStatsBtn.style.border = 'none';
+            quickStatsBtn.style.color = 'white';
+            quickStatsBtn.style.borderRadius = '6px';
+            quickStatsBtn.style.cursor = 'pointer';
+            quickStatsBtn.style.marginBottom = '12px';
+            quickStatsBtn.style.fontWeight = '600';
+            quickStatsBtn.addEventListener('click', () => {
+                openQuickStatsModal();
+            });
+            leftBody.appendChild(quickStatsBtn);
+
             const removeBtn = document.createElement('button');
             removeBtn.textContent = '✕ Remover';
             removeBtn.style.width = '100%';
@@ -3859,6 +3876,376 @@
         generateShareCode,
         importShareCode
     };
+
+    // ===== QUICK STATS MODAL =====
+    function openQuickStatsModal() {
+        // Criar modal overlay
+        const overlay = document.createElement('div');
+        overlay.style.position = 'fixed';
+        overlay.style.top = '0';
+        overlay.style.left = '0';
+        overlay.style.right = '0';
+        overlay.style.bottom = '0';
+        overlay.style.background = 'rgba(0,0,0,0.7)';
+        overlay.style.display = 'flex';
+        overlay.style.justifyContent = 'center';
+        overlay.style.alignItems = 'center';
+        overlay.style.zIndex = '10000';
+        
+        // Criar modal content
+        const modalBox = document.createElement('div');
+        modalBox.style.background = 'var(--bg-dark)';
+        modalBox.style.borderRadius = '12px';
+        modalBox.style.padding = '20px';
+        modalBox.style.maxWidth = '500px';
+        modalBox.style.width = '90%';
+        modalBox.style.maxHeight = '80vh';
+        modalBox.style.overflowY = 'auto';
+        modalBox.style.border = '2px solid var(--primary-red)';
+        modalBox.style.boxShadow = '0 8px 32px rgba(0,0,0,0.5)';
+        
+        // Título
+        const title = document.createElement('h3');
+        title.textContent = 'Configurar Dashboard Externa (Quick Stats)';
+        title.style.color = 'white';
+        title.style.marginBottom = '20px';
+        title.style.textAlign = 'center';
+        modalBox.appendChild(title);
+        
+        // Descrição
+        const desc = document.createElement('p');
+        desc.textContent = 'Configure até 4 valores rápidos da sua ECU para exibir na barra superior';
+        desc.style.color = 'var(--text-light)';
+        desc.style.fontSize = '13px';
+        desc.style.marginBottom = '15px';
+        modalBox.appendChild(desc);
+        
+        // Slots para cada stat
+        window.quickStatsConfig.forEach((stat, idx) => {
+            const slotDiv = document.createElement('div');
+            slotDiv.style.background = 'rgba(0,0,0,0.2)';
+            slotDiv.style.padding = '15px';
+            slotDiv.style.marginBottom = '12px';
+            slotDiv.style.borderRadius = '8px';
+            slotDiv.style.border = '1px solid var(--border-color)';
+            
+            // Heading
+            const slotTitle = document.createElement('div');
+            slotTitle.style.fontSize = '13px';
+            slotTitle.style.fontWeight = '700';
+            slotTitle.style.color = 'var(--primary-red)';
+            slotTitle.style.marginBottom = '10px';
+            slotTitle.textContent = `Valor ${idx + 1}`;
+            slotDiv.appendChild(slotTitle);
+            
+            // Checkbox habilitar
+            const enableDiv = document.createElement('div');
+            enableDiv.style.display = 'flex';
+            enableDiv.style.alignItems = 'center';
+            enableDiv.style.marginBottom = '10px';
+            enableDiv.style.gap = '8px';
+            
+            const enableCheck = document.createElement('input');
+            enableCheck.type = 'checkbox';
+            enableCheck.checked = stat.enabled;
+            enableCheck.style.cursor = 'pointer';
+            
+            const enableLabel = document.createElement('label');
+            enableLabel.textContent = 'Habilitado';
+            enableLabel.style.color = 'var(--text-light)';
+            enableLabel.style.cursor = 'pointer';
+            enableLabel.style.margin = '0';
+            
+            enableDiv.appendChild(enableCheck);
+            enableDiv.appendChild(enableLabel);
+            slotDiv.appendChild(enableDiv);
+            
+            // Label input
+            const labelDiv = document.createElement('div');
+            labelDiv.style.marginBottom = '10px';
+            
+            const labelLbl = document.createElement('label');
+            labelLbl.textContent = 'Nome:';
+            labelLbl.style.display = 'block';
+            labelLbl.style.color = 'var(--text-light)';
+            labelLbl.style.fontSize = '12px';
+            labelLbl.style.marginBottom = '4px';
+            
+            const labelInput = document.createElement('input');
+            labelInput.type = 'text';
+            labelInput.value = stat.label;
+            labelInput.placeholder = 'Ex: RPM, Temperatura';
+            labelInput.style.width = '100%';
+            labelInput.style.padding = '6px 8px';
+            labelInput.style.background = 'var(--bg-darker)';
+            labelInput.style.border = '1px solid var(--border-color)';
+            labelInput.style.borderRadius = '4px';
+            labelInput.style.color = 'var(--text-light)';
+            labelInput.style.boxSizing = 'border-box';
+            
+            labelDiv.appendChild(labelLbl);
+            labelDiv.appendChild(labelInput);
+            slotDiv.appendChild(labelDiv);
+            
+            // Field select
+            const fieldDiv = document.createElement('div');
+            fieldDiv.style.marginBottom = '10px';
+            
+            const fieldLbl = document.createElement('label');
+            fieldLbl.textContent = 'Campo CommonInfo:';
+            fieldLbl.style.display = 'block';
+            fieldLbl.style.color = 'var(--text-light)';
+            fieldLbl.style.fontSize = '12px';
+            fieldLbl.style.marginBottom = '4px';
+            
+            const fieldSelect = document.createElement('select');
+            fieldSelect.style.width = '100%';
+            fieldSelect.style.padding = '6px 8px';
+            fieldSelect.style.background = 'var(--bg-darker)';
+            fieldSelect.style.border = '1px solid var(--border-color)';
+            fieldSelect.style.borderRadius = '4px';
+            fieldSelect.style.color = 'var(--text-light)';
+            fieldSelect.style.boxSizing = 'border-box';
+            
+            // Opção vazia
+            const emptyOpt = document.createElement('option');
+            emptyOpt.value = '';
+            emptyOpt.textContent = '-- Selecione um campo --';
+            fieldSelect.appendChild(emptyOpt);
+            
+            // Adicionar campos do CommonInfo
+            if (window.CommonInfo && window.CommonInfo.config && window.CommonInfo.config.dataFields) {
+                window.CommonInfo.config.dataFields.forEach(field => {
+                    const opt = document.createElement('option');
+                    opt.value = field.id;
+                    opt.textContent = `${field.title} (${field.id})`;
+                    if (stat.fieldId === field.id) opt.selected = true;
+                    fieldSelect.appendChild(opt);
+                });
+            }
+            
+            fieldDiv.appendChild(fieldLbl);
+            fieldDiv.appendChild(fieldSelect);
+            slotDiv.appendChild(fieldDiv);
+            
+            // Divisor input
+            const divDiv = document.createElement('div');
+            divDiv.style.marginBottom = '10px';
+            
+            const divLbl = document.createElement('label');
+            divLbl.textContent = 'Divisor de Valor:';
+            divLbl.style.display = 'block';
+            divLbl.style.color = 'var(--text-light)';
+            divLbl.style.fontSize = '12px';
+            divLbl.style.marginBottom = '4px';
+            
+            const divInput = document.createElement('input');
+            divInput.type = 'number';
+            divInput.value = stat.divisor;
+            divInput.min = '0.1';
+            divInput.step = '0.1';
+            divInput.style.width = '100%';
+            divInput.style.padding = '6px 8px';
+            divInput.style.background = 'var(--bg-darker)';
+            divInput.style.border = '1px solid var(--border-color)';
+            divInput.style.borderRadius = '4px';
+            divInput.style.color = 'var(--text-light)';
+            divInput.style.boxSizing = 'border-box';
+            
+            divDiv.appendChild(divLbl);
+            divDiv.appendChild(divInput);
+            slotDiv.appendChild(divDiv);
+            
+            // Cor input
+            const colorDiv = document.createElement('div');
+            colorDiv.style.marginBottom = '0';
+            
+            const colorLbl = document.createElement('label');
+            colorLbl.textContent = 'Cor:';
+            colorLbl.style.display = 'block';
+            colorLbl.style.color = 'var(--text-light)';
+            colorLbl.style.fontSize = '12px';
+            colorLbl.style.marginBottom = '4px';
+            
+            const colorInput = document.createElement('input');
+            colorInput.type = 'color';
+            colorInput.value = stat.color;
+            colorInput.style.width = '100%';
+            colorInput.style.height = '40px';
+            colorInput.style.border = 'none';
+            colorInput.style.borderRadius = '4px';
+            colorInput.style.cursor = 'pointer';
+            
+            colorDiv.appendChild(colorLbl);
+            colorDiv.appendChild(colorInput);
+            slotDiv.appendChild(colorDiv);
+            
+            // Event listeners
+            enableCheck.addEventListener('change', () => {
+                stat.enabled = enableCheck.checked;
+            });
+            
+            labelInput.addEventListener('input', () => {
+                stat.label = labelInput.value;
+            });
+            
+            fieldSelect.addEventListener('change', () => {
+                stat.fieldId = fieldSelect.value;
+            });
+            
+            divInput.addEventListener('change', () => {
+                stat.divisor = parseFloat(divInput.value) || 1;
+            });
+            
+            colorInput.addEventListener('change', () => {
+                stat.color = colorInput.value;
+            });
+            
+            modalBox.appendChild(slotDiv);
+        });
+        
+        // Botões de ação
+        const btnDiv = document.createElement('div');
+        btnDiv.style.display = 'flex';
+        btnDiv.style.gap = '10px';
+        btnDiv.style.marginTop = '20px';
+        
+        const saveBtn = document.createElement('button');
+        saveBtn.textContent = 'Salvar';
+        saveBtn.style.flex = '1';
+        saveBtn.style.padding = '10px';
+        saveBtn.style.background = 'var(--primary-red)';
+        saveBtn.style.border = 'none';
+        saveBtn.style.color = 'white';
+        saveBtn.style.borderRadius = '6px';
+        saveBtn.style.fontWeight = '600';
+        saveBtn.style.cursor = 'pointer';
+        
+        const closeBtn = document.createElement('button');
+        closeBtn.textContent = 'Fechar';
+        closeBtn.style.flex = '1';
+        closeBtn.style.padding = '10px';
+        closeBtn.style.background = 'var(--border-color)';
+        closeBtn.style.border = 'none';
+        closeBtn.style.color = 'var(--text-light)';
+        closeBtn.style.borderRadius = '6px';
+        closeBtn.style.fontWeight = '600';
+        closeBtn.style.cursor = 'pointer';
+        
+        saveBtn.addEventListener('click', () => {
+            saveQuickStatsConfig();
+            updateQuickStats();
+            overlay.remove();
+        });
+        
+        closeBtn.addEventListener('click', () => {
+            overlay.remove();
+        });
+        
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                overlay.remove();
+            }
+        });
+        
+        btnDiv.appendChild(saveBtn);
+        btnDiv.appendChild(closeBtn);
+        modalBox.appendChild(btnDiv);
+        
+        overlay.appendChild(modalBox);
+        document.body.appendChild(overlay);
+    }
+
+    // ===== QUICK STATS =====
+    const QUICK_STATS_KEY = 'dsw_quick_stats_config_v1';
+
+    function initializeQuickStats() {
+        try {
+            const saved = localStorage.getItem(QUICK_STATS_KEY);
+            if (saved) {
+                window.quickStatsConfig = JSON.parse(saved);
+            } else {
+                window.quickStatsConfig = [
+                    { id: 'stat1', label: '', fieldId: '', divisor: 1, color: '#FFD700', enabled: false },
+                    { id: 'stat2', label: '', fieldId: '', divisor: 1, color: '#FFD700', enabled: false },
+                    { id: 'stat3', label: '', fieldId: '', divisor: 1, color: '#FFD700', enabled: false },
+                    { id: 'stat4', label: '', fieldId: '', divisor: 1, color: '#FFD700', enabled: false }
+                ];
+            }
+        } catch (err) {
+            console.error('Erro ao carregar quick stats:', err);
+            window.quickStatsConfig = [
+                { id: 'stat1', label: '', fieldId: '', divisor: 1, color: '#FFD700', enabled: false },
+                { id: 'stat2', label: '', fieldId: '', divisor: 1, color: '#FFD700', enabled: false },
+                { id: 'stat3', label: '', fieldId: '', divisor: 1, color: '#FFD700', enabled: false },
+                { id: 'stat4', label: '', fieldId: '', divisor: 1, color: '#FFD700', enabled: false }
+            ];
+        }
+        updateQuickStats();
+    }
+
+    function updateQuickStats() {
+        const panel = document.getElementById('quickStatsPanel');
+        if (!panel) return;
+        
+        panel.innerHTML = '';
+        
+        window.quickStatsConfig.forEach(stat => {
+            if (!stat.enabled || !stat.fieldId) return;
+            
+            let value = 0;
+            let unit = '';
+            
+            if (window.CommonInfo && window.CommonInfo.data && window.CommonInfo.data[stat.fieldId]) {
+                value = window.CommonInfo.data[stat.fieldId].value || 0;
+                unit = window.CommonInfo.data[stat.fieldId].unit || '';
+            }
+            
+            const divisor = stat.divisor || 1;
+            const displayValue = (value / divisor).toFixed(1);
+            
+            const item = document.createElement('div');
+            item.className = 'quick-stat-item';
+            item.style.borderColor = stat.color;
+            item.style.boxShadow = `0 0 8px ${stat.color}33, 0 2px 8px rgba(0,0,0,0.3)`;
+            
+            const labelDiv = document.createElement('div');
+            labelDiv.className = 'quick-stat-label';
+            labelDiv.textContent = stat.label || stat.fieldId;
+            
+            const valueDiv = document.createElement('div');
+            valueDiv.className = 'quick-stat-value';
+            valueDiv.textContent = displayValue;
+            valueDiv.style.color = stat.color;
+            
+            const unitDiv = document.createElement('div');
+            unitDiv.className = 'quick-stat-unit';
+            unitDiv.textContent = unit;
+            
+            item.appendChild(labelDiv);
+            item.appendChild(valueDiv);
+            item.appendChild(unitDiv);
+            panel.appendChild(item);
+        });
+    }
+
+    function saveQuickStatsConfig() {
+        try {
+            localStorage.setItem(QUICK_STATS_KEY, JSON.stringify(window.quickStatsConfig));
+        } catch (err) {
+            console.error('Erro ao salvar quick stats:', err);
+        }
+    }
+
+    // Atualizar quick stats quando CommonInfo for atualizado
+    window.addEventListener('commoninfoUpdated', () => {
+        updateQuickStats();
+    });
+
+    // Inicializar ao carregar
+    setTimeout(() => {
+        initializeQuickStats();
+    }, 500);
 
     if (modal && modal.getAttribute('aria-hidden') === 'false') {
         renderViewMode();
