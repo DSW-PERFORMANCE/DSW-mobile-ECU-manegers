@@ -339,13 +339,22 @@
          */
         async fetchCommonData() {
             if (!this.config?.commonDiagnosticsCommand || !this.isOnline) {
+                if (!this.config?.commonDiagnosticsCommand) {
+                    console.warn('[CommonInfo] ❌ Comando diagnóstico não configurado');
+                }
+                if (!this.isOnline) {
+                    console.debug('[CommonInfo] ⏸️ ECU offline - fetchCommonData ignorado');
+                }
                 return;
             }
             
+            console.debug(`[CommonInfo] 📡 Iniciando fetch: ${this.config.commonDiagnosticsCommand}`);
+            
             try {
                 // Preferir usar communication-bridge (ponte de comunicação com serial)
-                if (window.communicationBridge && window.communicationBridge.sendCommand) {
+                if (window.communicationBridge && window.communicationBridge.queryDiagnosticsData) {
                     const command = this.config.commonDiagnosticsCommand;
+                    console.debug(`[CommonInfo] 🌉 Usando bridge.queryDiagnosticsData()`);
                     
                     // Enviar comando com timeout de 3 segundos
                     const timeoutId = setTimeout(() => {
@@ -353,22 +362,26 @@
                     }, 3000);
                     
                     try {
-                        const response = await window.communicationBridge.sendCommand(command, null);
+                        const response = await window.communicationBridge.queryDiagnosticsData(command);
                         clearTimeout(timeoutId);
                         
                         if (response) {
+                            console.debug(`[CommonInfo] ✅ Bridge retornou dados: ${String(response).substring(0, 50)}...`);
                             this.parseCommonData(response);
                         } else {
+                            console.warn('[CommonInfo] ⚠️ Bridge retornou vazio');
                             this.handleFetchFailure('Resposta vazia da bridge');
                         }
                     } catch (error) {
                         clearTimeout(timeoutId);
+                        console.error(`[CommonInfo] ❌ Erro na bridge:`, error);
                         this.handleFetchFailure(`Erro na bridge: ${error.message}`);
                     }
                 }
                 // Fallback para ECUCommunication direto
                 else if (window.ecuCommunication && window.ecuCommunication.sendCommand) {
                     const command = this.config.commonDiagnosticsCommand;
+                    console.debug(`[CommonInfo] 📡 Usando ECU.sendCommand() direto`);
                     
                     const timeoutId = setTimeout(() => {
                         this.handleFetchFailure('Timeout ao buscar dados via ECU');
@@ -383,6 +396,10 @@
                             this.handleFetchFailure('Resposta vazia da ECU');
                         }
                     });
+                } else {
+                    // Nenhuma comunicação disponível
+                    console.error('[CommonInfo] ❌ Nenhuma bridge ou ECU disponível para diagnóstico');
+                    this.handleFetchFailure('CommunicationBridge e ECUCommunication não disponíveis');
                 }
             } catch (error) {
                 this.handleFetchFailure(`Erro geral: ${error.message}`);
@@ -482,6 +499,7 @@
                 // Reset contador de falhas em sucesso
                 this.failureCount = 0;
                 this.successCount++;
+                this.fetchCount++; // ✅ Incrementar contador de fetches
                 
                 if (this.isEmergencyMode) {
                     console.log('[CommonInfo] ✅ MODO EMERGÊNCIA DESATIVADO - Dados da ECU recuperados');
@@ -514,6 +532,8 @@
                         }
                     });
                 }
+                // Disparar evento customizado para quick stats
+                window.dispatchEvent(new Event('commoninfoUpdated'));
             } catch (err) {
                 console.error('[CommonInfo] 🔴 Erro ao notificar listeners:', err);
             }
@@ -585,6 +605,35 @@
                 'Fonte': info.source,
                 'Título': info.title
             })));
+        },
+
+        /**
+         * Método de debug para inspecionar estado do CommonInfo (use no console)
+         * window.CommonInfo.debug()
+         */
+        debug() {
+            console.group('[CommonInfo] 🔍 DIAGNÓSTICO COMPLETO');
+            console.log('STATUS:', this.getStats());
+            console.log('CONFIGURAÇÃO:', this.config);
+            console.log('DADOS ATUAIS:', this.data);
+            console.log('ESTADO BOOLEANO:', {
+                isOnline: this.isOnline,
+                isPaused: this.isPaused,
+                isPolling: this.isPolling,
+                isEmergencyMode: this.isEmergencyMode,
+                wasOffline: this.wasOffline
+            });
+            console.log('COMUNICAÇÃO:', {
+                communicationBridge: !!window.communicationBridge,
+                queryDiagnosticsData: !!(window.communicationBridge && window.communicationBridge.queryDiagnosticsData),
+                ecuCommunication: !!window.ecuCommunication,
+                ecuSendCommand: !!(window.ecuCommunication && window.ecuCommunication.sendCommand)
+            });
+            console.log('LISTENERS:', {
+                total: this._listeners.size,
+                listeners: Array.from(this._listeners)
+            });
+            console.groupEnd();
         }
     };
     

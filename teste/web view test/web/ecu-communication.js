@@ -2,25 +2,76 @@ class ECUCommunication {
     constructor() {
         this.isOnline = false;
         this.config = null;
-
-        // tempo entre checagens de status (ms)
+        this.appConfig = null;
+        this.environment = 'browser';
+        
+        // WebView polling
         this.pollInterval = 2000;
         this._pollHandle = null;
-
-        // Inicializa integração com Python
-        this.initPyLink();
-
+        
+        // Carregar configuração de app.json
+        this.loadAppConfig();
+        
         // garante parar polling se a página for fechada / recarregada
         window.addEventListener('beforeunload', () => this.stopStatusPolling());
     }
 
+    /**
+     * Carrega configuração de app.json
+     */
+    async loadAppConfig() {
+        try {
+            const response = await fetch('app.json');
+            if (response.ok) {
+                this.appConfig = await response.json();
+                this.environment = this.appConfig.environment || 'browser';
+                console.log(`[ECUCommunication] Ambiente detectado de app.json:`, this.environment);
+                
+                // Se for webview, inicializar integração com Python
+                if (this.environment === 'webview') {
+                    this.initPyLink();
+                }
+                return true;
+            } else {
+                console.warn('[ECUCommunication] app.json não encontrado, usando padrão');
+                this.environment = 'browser';
+                return false;
+            }
+        } catch (err) {
+            console.error('[ECUCommunication] Erro ao carregar app.json:', err);
+            this.environment = 'browser';
+            return false;
+        }
+    }
+
+    /**
+     * Obtém o ambiente atual
+     */
+    getEnvironment() {
+        return this.environment;
+    }
+
+    /**
+     * Verifica se está rodando em um ambiente específico
+     */
+    isEnvironment(env) {
+        return this.environment === env;
+    }
+
+    /**
+     * Inicializa integração com pyWebView
+     * Conecta JavaScript com backend Python
+     */
     async initPyLink() {
         if (!window.pywebview) {
+            console.log('[WebView] Aguardando pywebview estar pronto...');
             window.addEventListener('pywebviewready', async () => {
                 try {
                     const status = await window.pywebview.api.get_status();
                     this.setStatus(status.online);
+                    console.log('[WebView] Conectado ao backend Python');
                 } catch (e) {
+                    console.error('[WebView] Erro ao conectar:', e);
                     this.setStatus(false);
                 }
                 this.startStatusPolling();
@@ -29,42 +80,46 @@ class ECUCommunication {
             try {
                 const status = await window.pywebview.api.get_status();
                 this.setStatus(status.online);
+                console.log('[WebView] Conectado ao backend Python');
             } catch (e) {
+                console.error('[WebView] Erro ao conectar:', e);
                 this.setStatus(false);
             }
             this.startStatusPolling();
         }
     }
 
+    /**
+     * Inicia polling de status da ECU (WebView)
+     */
     startStatusPolling() {
-        // evita múltiplos timers
+        if (this.environment !== 'webview') return;
         if (this._pollHandle) return;
 
         this._pollHandle = setInterval(async () => {
             if (!window.pywebview || !window.pywebview.api || !window.pywebview.api.get_status) {
-                // pywebview não pronto -> setar offline e continuar tentando
                 if (this.isOnline) this.setStatus(false);
                 return;
             }
 
             try {
                 const status = await window.pywebview.api.get_status();
-                // se mudou, atualiza badge
                 if (typeof status === 'object' && 'online' in status) {
                     if (status.online !== this.isOnline) {
                         this.setStatus(status.online);
                     }
                 } else {
-                    // resposta inesperada -> assume offline
                     if (this.isOnline) this.setStatus(false);
                 }
             } catch (err) {
-                // falha na chamada (ex: backend desconectou). marca offline e continua tentando.
                 if (this.isOnline) this.setStatus(false);
             }
         }, this.pollInterval);
     }
 
+    /**
+     * Para polling de status
+     */
     stopStatusPolling() {
         if (this._pollHandle) {
             clearInterval(this._pollHandle);
@@ -87,8 +142,6 @@ class ECUCommunication {
 
     updateStatusBadge() {
         const statusBadge = document.getElementById('statusBadge');
-        if (!statusBadge) return;
-
         if (this.isOnline) {
             statusBadge.className = 'badge bg-success';
             statusBadge.textContent = 'ONLINE';
@@ -99,6 +152,41 @@ class ECUCommunication {
     }
 
     async sendCommand(command, value) {
+        // Usar ConfigMacros se disponível para determinar protocolo
+        if (window.ConfigMacros) {
+            return await window.ConfigMacros.choose({
+                browser: async () => this._sendBrowser(command, value),
+                webview: async () => await this._sendWebView(command, value),
+                windows: async () => await this._sendWindows(command, value)
+            });
+        }
+
+        // Fallback padrão (browser simulado)
+        return this._sendBrowser(command, value);
+    }
+
+    /**
+     * Implementação: Browser (Simulado)
+     */
+    _sendBrowser(command, value) {
+        if (!this.isOnline) {
+            console.log(`[OFFLINE] Não é possível enviar: ${command}=${value}`);
+            return false;
+        }
+
+        return new Promise((resolve) => {
+            setTimeout(() => {
+                console.log(`[ECU] Enviado: ${command}=${value}`);
+                console.log(`[ECU] Resposta: OK`);
+                resolve(true);
+            }, 50);
+        });
+    }
+
+    /**
+     * Implementação: WebView (pyWebView - Python Backend)
+     */
+    async _sendWebView(command, value) {
         if (!this.isOnline || !window.pywebview) {
             console.log(`[OFFLINE] Não é possível enviar: ${command}=${value}`);
             return false;
@@ -122,7 +210,64 @@ class ECUCommunication {
         }
     }
 
+    /**
+     * Implementação: Windows (COM Port / Windows API)
+     */
+    async _sendWindows(command, value) {
+        if (!this.isOnline) {
+            console.log(`[OFFLINE] Não é possível enviar: ${command}=${value}`);
+            return false;
+        }
+
+        try {
+            // Simular envio via Windows API/COM Port
+            console.log(`[Windows] Enviando via COM Port: ${command}=${value}`);
+            // window.windowsAPI.sendCommand(command, value);
+            return true;
+        } catch (err) {
+            console.error(`[Windows] Erro ao enviar:`, err);
+            return false;
+        }
+    }
+
     async queryCommand(command) {
+        // Usar ConfigMacros se disponível para determinar protocolo
+        if (window.ConfigMacros) {
+            return await window.ConfigMacros.choose({
+                browser: async () => this._queryBrowser(command),
+                webview: async () => await this._queryWebView(command),
+                windows: async () => await this._queryWindows(command)
+            });
+        }
+
+        // Fallback padrão (browser simulado)
+        return this._queryBrowser(command);
+    }
+
+    /**
+     * Implementação: Browser (Simulado)
+     */
+    _queryBrowser(command) {
+        if (!this.isOnline) {
+            const defaultValue = this.getDefaultValue(command);
+            console.log(`[OFFLINE] Retornando valor padrão para ${command}: ${defaultValue}`);
+            return defaultValue;
+        }
+
+        return new Promise((resolve) => {
+            setTimeout(() => {
+                const simulatedValue = this.getDefaultValue(command);
+                console.log(`[ECU] Consultado: ${command}?`);
+                console.log(`[ECU] Resposta: ${command}=${simulatedValue}`);
+                resolve(simulatedValue);
+            }, 50);
+        });
+    }
+
+    /**
+     * Implementação: WebView (pyWebView - Python Backend)
+     */
+    async _queryWebView(command) {
         if (!this.isOnline || !window.pywebview) {
             const defaultValue = this.getDefaultValue(command);
             console.log(`[OFFLINE] Retornando valor padrão para ${command}: ${defaultValue}`);
@@ -147,6 +292,28 @@ class ECUCommunication {
         }
     }
 
+    /**
+     * Implementação: Windows (COM Port / Windows API)
+     */
+    async _queryWindows(command) {
+        if (!this.isOnline) {
+            const defaultValue = this.getDefaultValue(command);
+            console.log(`[OFFLINE] Retornando valor padrão para ${command}: ${defaultValue}`);
+            return defaultValue;
+        }
+
+        try {
+            // Simular query via Windows API/COM Port
+            console.log(`[Windows] Consultando via COM Port: ${command}?`);
+            // const response = await window.windowsAPI.queryCommand(command);
+            // return response;
+            return this.getDefaultValue(command);
+        } catch (err) {
+            console.error(`[Windows] Erro ao consultar:`, err);
+            return this.getDefaultValue(command);
+        }
+    }
+
     async saveCurrentScreen(widgets, currentValues) {
         console.log('=== SALVANDO WIDGETS DA TELA ATUAL ===');
 
@@ -157,7 +324,7 @@ class ECUCommunication {
         }
 
         for (const widget of widgets) {
-            // Skip widgets without commands (action buttons, etc)
+            // Ignore widgets that don't represent stored values (action buttons, plain buttons)
             if (!widget) continue;
             if (widget.type === 'action_buttons' || widget.type === 'button') continue;
 
@@ -201,8 +368,9 @@ class ECUCommunication {
                 continue;
             }
 
-            // Regular widgets with single command
+            // If widget has no command, skip it
             if (!widget.command) continue;
+
             const value = currentValues[widget.command];
             const commandStr = `${widget.command}=${value}`;
             console.log(`Enviando: ${commandStr}`);
@@ -220,7 +388,6 @@ class ECUCommunication {
         const reloadedValues = {};
 
         for (const widget of widgets) {
-            // Skip widgets without commands (action buttons, etc)
             if (!widget) continue;
             if (widget.type === 'action_buttons' || widget.type === 'button') continue;
 
@@ -250,7 +417,6 @@ class ECUCommunication {
                 continue;
             }
 
-            // Checkbox groups contain multiple checkbox entries, each with its own command
             if (widget.type === 'checkbox_group' && Array.isArray(widget.checkboxes)) {
                 for (const cb of widget.checkboxes) {
                     if (!cb || !cb.command) continue;
@@ -262,7 +428,6 @@ class ECUCommunication {
                 continue;
             }
 
-            // Regular widgets with single command
             if (!widget.command) continue;
             const commandStr = `${widget.command}?`;
             console.log(`Consultando: ${commandStr}`);
@@ -289,6 +454,7 @@ class ECUCommunication {
         const findDefault = (nodes) => {
             for (const node of nodes) {
                 if (node.widgets) {
+                    // Direct widget command
                     const widget = node.widgets.find(w => w.command === command);
                     if (widget) return widget.default;
 
@@ -330,6 +496,12 @@ class ECUCommunication {
                                 }
                                 return axisValues.join(',');
                             }
+                        }
+
+                        // Checkbox group inner commands
+                        if (w.type === 'checkbox_group' && Array.isArray(w.checkboxes)) {
+                            const cb = w.checkboxes.find(c => c.command === command);
+                            if (cb) return cb.default !== undefined ? cb.default : (cb.valueOff !== undefined ? cb.valueOff : 0);
                         }
                     }
                 }

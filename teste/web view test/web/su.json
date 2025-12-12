@@ -606,7 +606,7 @@
         "position": 9,
         "min": 0.5,
         "max": 1.5,
-        "default": 1.0
+        "default": 1.2
       }
     ]
   },

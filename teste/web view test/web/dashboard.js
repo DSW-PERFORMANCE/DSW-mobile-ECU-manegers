@@ -73,9 +73,17 @@
 
     function loadElements() {
         try {
-            const raw = localStorage.getItem(STORAGE_KEY);
-            if (!raw) return JSON.parse(JSON.stringify(defaultElements));
-            return JSON.parse(raw);
+            // Usar StorageManager se disponível, senão fallback para localStorage
+            if (window.StorageManager) {
+                const raw = localStorage.getItem(STORAGE_KEY);
+                if (!raw) return JSON.parse(JSON.stringify(defaultElements));
+                const payload = JSON.parse(raw);
+                return payload.data || JSON.parse(JSON.stringify(defaultElements));
+            } else {
+                const raw = localStorage.getItem(STORAGE_KEY);
+                if (!raw) return JSON.parse(JSON.stringify(defaultElements));
+                return JSON.parse(raw);
+            }
         } catch (err) {
             console.error('Failed to load elements', err);
             return JSON.parse(JSON.stringify(defaultElements));
@@ -92,7 +100,12 @@
 
     function saveElements(list) {
         try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+            // Usar StorageManager se disponível
+            if (window.StorageManager) {
+                window.StorageManager.save(STORAGE_KEY, list);
+            } else {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+            }
         } catch (err) {
             console.error('Failed to save elements', err);
         }
@@ -107,11 +120,16 @@
     }
 
     // Share code helpers: encode current elements to single-line string and decode back
-    const SHARE_PREFIX = 'DSWCFG1:';
+    const SHARE_PREFIX = 'DSWCFG2:'; // v2 inclui quick stats
 
     function generateShareCode() {
         try {
-            const json = JSON.stringify(elements);
+            // Incluir tanto elements quanto quick stats no export
+            const exportData = {
+                elements: elements,
+                quickStats: window.quickStatsConfig || []
+            };
+            const json = JSON.stringify(exportData);
             const base = btoa(encodeURIComponent(json));
             return SHARE_PREFIX + base;
         } catch (err) {
@@ -125,7 +143,15 @@
             if (!code || typeof code !== 'string') throw new Error('Código inválido');
             // accept prefixed code or raw base64
             let payload = code.trim();
-            if (payload.startsWith(SHARE_PREFIX)) payload = payload.slice(SHARE_PREFIX.length);
+            
+            // Detectar versão do código
+            let isV2 = false;
+            if (payload.startsWith('DSWCFG2:')) {
+                isV2 = true;
+                payload = payload.slice('DSWCFG2:'.length);
+            } else if (payload.startsWith('DSWCFG1:')) {
+                payload = payload.slice('DSWCFG1:'.length);
+            }
 
             // Try decode
             let json = null;
@@ -142,8 +168,24 @@
             }
 
             const parsed = JSON.parse(json);
-            if (!Array.isArray(parsed)) throw new Error('Formato inválido');
-            elements = parsed;
+            
+            // Se for v2, importar tanto elements quanto quickStats
+            if (isV2 && parsed.elements) {
+                if (!Array.isArray(parsed.elements)) throw new Error('Formato inválido');
+                elements = parsed.elements;
+                
+                // Importar quick stats se existirem
+                if (parsed.quickStats && Array.isArray(parsed.quickStats)) {
+                    window.quickStatsConfig = parsed.quickStats;
+                    saveQuickStatsConfig();
+                    updateQuickStats();
+                }
+            } else {
+                // v1: apenas elements
+                if (!Array.isArray(parsed)) throw new Error('Formato inválido');
+                elements = parsed;
+            }
+            
             saveElements(elements);
             return { ok: true };
         } catch (err) {
@@ -615,8 +657,7 @@
         label.textContent = e.label || e.id;
 
         const led = document.createElement('div');
-            led.style.width = '100%';
-            led.style.aspectRatio = '1/1';
+        led.style.width = '100%';
         led.style.aspectRatio = '1/1';
         led.style.borderRadius = '50%';
         const isOn = e.value >= e.threshold;
@@ -718,7 +759,7 @@
         fill.style.width = ((e.value - e.min) / (e.max - e.min)) * 100 + '%';
         fill.style.transition = 'width 0.3s ease';
         fill.style.boxShadow = `inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 0 8px ${e.color || 'rgba(139, 0, 0, 0.6)'}`;
-        bar.appendChild(fill);
+            bar.appendChild(fill);
 
         // Marcador visual (triângulo) mostrando markerValue
         if (e.markerValue !== undefined && e.markerValue !== null) {
@@ -741,27 +782,7 @@
             bar._markerIndicator = marker;
         }
 
-        barContainer.appendChild(bar);
-        if (e.markerValue !== undefined && e.markerValue !== null) {
-            const markerPercent = Math.max(0, Math.min(100, ((e.markerValue - e.min) / (e.max - e.min)) * 100));
-            const marker = document.createElement('div');
-            marker.style.position = 'absolute';
-            marker.style.top = '-8px';
-            marker.style.left = markerPercent + '%';
-            marker.style.transform = 'translateX(-50%)';
-            marker.style.width = '0';
-            marker.style.height = '0';
-            marker.style.borderLeft = '6px solid transparent';
-            marker.style.borderRight = '6px solid transparent';
-            marker.style.borderTop = '10px solid ' + (e.markerColor || '#FFD700');
-            marker.style.filter = 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0.8))';
-            marker.style.zIndex = '10';
-            marker.title = `Marcador: ${e.markerValue}`;
-            bar.appendChild(marker);
-            bar._markerIndicator = marker;
-        }
-
-        barContainer.appendChild(bar);
+        barContainer.appendChild(bar);        barContainer.appendChild(bar);
         cont.appendChild(label);
         cont.appendChild(barContainer);
 
@@ -803,6 +824,104 @@
         wrapper.appendChild(textDiv);
         wrapper._textEl = textDiv;
         wrapper._type = 'text';
+        return wrapper;
+    }
+
+    function createBarPointerElement(e) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'dashboard-marker bar-pointer';
+        wrapper.dataset.id = e.id;
+        wrapper.style.left = (e.pos && e.pos.x != null ? e.pos.x : 50) + '%';
+        wrapper.style.top = (e.pos && e.pos.y != null ? e.pos.y : 50) + '%';
+        
+        const scale = (e.sizeScale || 100) / 100;
+        const baseWidthPercent = 20;
+        const baseHeightPercent = 12;
+        wrapper.style.width = (baseWidthPercent * scale) + '%';
+        wrapper.style.height = (baseHeightPercent * scale) + '%';
+
+        const cont = document.createElement('div');
+        cont.style.display = 'flex';
+        cont.style.flexDirection = 'column';
+        cont.style.gap = '8px';
+        cont.style.padding = '8px';
+        cont.style.width = '100%';
+        cont.style.height = '100%';
+
+        const label = document.createElement('div');
+        label.style.fontSize = '13px';
+        label.style.color = 'var(--text-light)';
+        label.style.fontWeight = '600';
+        label.textContent = e.label || e.id;
+
+        const barContainer = document.createElement('div');
+        barContainer.style.display = 'flex';
+        barContainer.style.alignItems = 'center';
+        barContainer.style.gap = '8px';
+        barContainer.style.width = '100%';
+        barContainer.style.flex = '1';
+
+        if (e.icon) {
+            const iconEl = document.createElement('i');
+            iconEl.className = `bi bi-${e.icon}`;
+            iconEl.style.fontSize = '18px';
+            iconEl.style.color = e.color || 'var(--primary-red)';
+            iconEl.style.flexShrink = '0';
+            iconEl.style.filter = `drop-shadow(0 0 3px ${e.color || 'rgba(139, 0, 0, 0.6)'})`;
+            barContainer.appendChild(iconEl);
+        }
+
+        const bar = document.createElement('div');
+        bar.style.flex = '1';
+        bar.style.height = '24px';
+        bar.style.background = 'linear-gradient(to bottom, rgba(50, 50, 50, 0.8), rgba(25, 25, 25, 0.9))';
+        bar.style.border = '1px solid #8B0000';
+        bar.style.borderRadius = '12px';
+        bar.style.overflow = 'hidden';
+        bar.style.position = 'relative';
+        bar.style.boxShadow = 'inset 0 2px 4px rgba(0, 0, 0, 0.5)';
+
+        const fill = document.createElement('div');
+        fill.style.height = '100%';
+        fill.style.width = ((e.value - e.min) / (e.max - e.min)) * 100 + '%';
+        fill.style.transition = 'width 0.3s ease';
+        fill.style.background = `linear-gradient(to right, ${e.color || 'var(--primary-red)'}, rgba(165, 42, 42, 0.8))`;
+        fill.style.boxShadow = `inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 0 8px ${e.color || 'rgba(139, 0, 0, 0.6)'}`;
+        bar.appendChild(fill);
+
+        // Ponteiro vertical mostrando valor atual
+        const pointerPercent = Math.max(0, Math.min(100, ((e.value - e.min) / (e.max - e.min)) * 100));
+        const pointer = document.createElement('div');
+        pointer.style.position = 'absolute';
+        pointer.style.left = pointerPercent + '%';
+        pointer.style.top = '0';
+        pointer.style.width = '3px';
+        pointer.style.height = '100%';
+        pointer.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
+        pointer.style.transform = 'translateX(-50%)';
+        pointer.style.boxShadow = '0 0 6px rgba(255, 255, 255, 0.6), 0 0 12px ' + (e.color || 'rgba(139, 0, 0, 0.8)');
+        pointer.style.zIndex = '5';
+        bar.appendChild(pointer);
+        bar._pointerIndicator = pointer;
+
+        barContainer.appendChild(bar);
+        cont.appendChild(label);
+        cont.appendChild(barContainer);
+
+        const value = document.createElement('div');
+        value.style.fontSize = '12px';
+        value.style.color = 'var(--light-red)';
+        value.style.textAlign = 'right';
+        value.style.fontWeight = '600';
+        const unitStr = e.unit ? ` ${e.unit}` : '';
+        value.textContent = e.value.toFixed(1) + ' / ' + e.max.toFixed(1) + unitStr;
+        cont.appendChild(value);
+
+        wrapper.appendChild(cont);
+        wrapper._fillEl = fill;
+        wrapper._pointerEl = bar;
+        wrapper._valueEl = value;
+        wrapper._type = 'bar-pointer';
         return wrapper;
     }
 
@@ -874,9 +993,11 @@
         textDiv.style.fontSize = (e.fontSize || 16) + 'px';
         textDiv.style.fontWeight = e.fontWeight || '600';
         textDiv.style.textAlign = 'center';
-        textDiv.style.padding = '8px 12px';
-        textDiv.style.borderRadius = '6px';
+        textDiv.style.padding = '10px 14px';
+        textDiv.style.borderRadius = '8px';
         textDiv.style.whiteSpace = 'nowrap';
+        textDiv.style.border = '2px solid';
+        textDiv.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)';
 
         let activeCondition = e.conditions && e.conditions[0];
         if (e.conditions) {
@@ -889,8 +1010,9 @@
         }
 
         textDiv.textContent = activeCondition ? activeCondition.text : e.label || '';
-        textDiv.style.color = activeCondition ? (activeCondition.color || 'white') : 'var(--text-light)';
-        textDiv.style.background = activeCondition ? (activeCondition.background || 'rgba(255,0,0,0.3)') : 'rgba(0,0,0,0.2)';
+        textDiv.style.color = activeCondition ? (activeCondition.textColor || '#ffffff') : (e.defaultTextColor || '#ffffff');
+        textDiv.style.background = activeCondition ? (activeCondition.backgroundColor || 'rgba(255,0,0,0.3)') : (e.defaultBackgroundColor || 'rgba(0,0,0,0.2)');
+        textDiv.style.borderColor = activeCondition ? (activeCondition.borderColor || 'rgba(255,0,0,0.5)') : (e.defaultBorderColor || 'rgba(0,0,0,0.3)');
 
         wrapper.appendChild(textDiv);
         wrapper._textEl = textDiv;
@@ -966,14 +1088,24 @@
             // Modo press_only: comando só ao apertar
             if (buttonConfig.mode === 'press_only' && buttonConfig.commandPress) {
                 if (window.ecuCommunication && window.ecuCommunication.sendCommand) {
-                    window.ecuCommunication.sendCommand(buttonConfig.commandPress);
+                    console.log(`[Button] Enviando comando (press_only): ${buttonConfig.commandPress}`);
+                    try {
+                        await window.ecuCommunication.sendCommand(buttonConfig.commandPress);
+                    } catch (err) {
+                        console.error(`[Button] Erro ao enviar: ${err.message}`);
+                    }
                 }
             }
 
             // Modo value: enviar valores ao apertar
             if (buttonConfig.mode === 'value' && buttonConfig.valuePressCommand) {
                 if (window.ecuCommunication && window.ecuCommunication.sendCommand) {
-                    window.ecuCommunication.sendCommand(buttonConfig.valuePressCommand);
+                    console.log(`[Button] Enviando comando (value press): ${buttonConfig.valuePressCommand}`);
+                    try {
+                        await window.ecuCommunication.sendCommand(buttonConfig.valuePressCommand);
+                    } catch (err) {
+                        console.error(`[Button] Erro ao enviar: ${err.message}`);
+                    }
                 }
             }
 
@@ -982,7 +1114,12 @@
                 wrapper._isActive = true;
                 if (window.ecuCommunication && window.ecuCommunication.sendCommand) {
                     const cmdWithValue = buttonConfig.command + '=' + buttonConfig.valuePress;
-                    window.ecuCommunication.sendCommand(cmdWithValue);
+                    console.log(`[Button] Enviando comando (stateful_value press): ${cmdWithValue}`);
+                    try {
+                        await window.ecuCommunication.sendCommand(buttonConfig.command, buttonConfig.valuePress);
+                    } catch (err) {
+                        console.error(`[Button] Erro ao enviar: ${err.message}`);
+                    }
                 }
                 updateStatefulButton();
             }
@@ -990,7 +1127,12 @@
             // Modo press_release: comando ao apertar
             if (buttonConfig.mode === 'press_release' && buttonConfig.commandPress) {
                 if (window.ecuCommunication && window.ecuCommunication.sendCommand) {
-                    window.ecuCommunication.sendCommand(buttonConfig.commandPress);
+                    console.log(`[Button] Enviando comando (press_release press): ${buttonConfig.commandPress}`);
+                    try {
+                        await window.ecuCommunication.sendCommand(buttonConfig.commandPress);
+                    } catch (err) {
+                        console.error(`[Button] Erro ao enviar: ${err.message}`);
+                    }
                 }
             }
 
@@ -1012,7 +1154,12 @@
                         const cmdWithValue = buttonConfig.command + '=' + valueToSend;
                         
                         if (window.ecuCommunication && window.ecuCommunication.sendCommand) {
-                            window.ecuCommunication.sendCommand(cmdWithValue);
+                            console.log(`[Button] Enviando toggle: ${cmdWithValue}`);
+                            try {
+                                await window.ecuCommunication.sendCommand(buttonConfig.command, valueToSend);
+                            } catch (err) {
+                                console.error(`[Button] Erro no toggle: ${err.message}`);
+                            }
                         }
                         
                         // Atualizar visual do botão
@@ -1032,7 +1179,7 @@
             }
         });
 
-        button.addEventListener('pointerup', (ev) => {
+        button.addEventListener('pointerup', async (ev) => {
             ev.preventDefault();
             button.style.transform = 'scale(1)';
             button.style.boxShadow = `0 4px 12px rgba(0,0,0,0.3)`;
@@ -1040,14 +1187,24 @@
             // Modo press_release: comando ao soltar
             if (buttonConfig.mode === 'press_release' && buttonConfig.commandRelease) {
                 if (window.ecuCommunication && window.ecuCommunication.sendCommand) {
-                    window.ecuCommunication.sendCommand(buttonConfig.commandRelease);
+                    console.log(`[Button] Enviando comando (press_release release): ${buttonConfig.commandRelease}`);
+                    try {
+                        await window.ecuCommunication.sendCommand(buttonConfig.commandRelease);
+                    } catch (err) {
+                        console.error(`[Button] Erro ao enviar: ${err.message}`);
+                    }
                 }
             }
 
             // Modo value: enviar valor ao soltar
             if (buttonConfig.mode === 'value' && buttonConfig.valueReleaseCommand) {
                 if (window.ecuCommunication && window.ecuCommunication.sendCommand) {
-                    window.ecuCommunication.sendCommand(buttonConfig.valueReleaseCommand);
+                    console.log(`[Button] Enviando comando (value release): ${buttonConfig.valueReleaseCommand}`);
+                    try {
+                        await window.ecuCommunication.sendCommand(buttonConfig.valueReleaseCommand);
+                    } catch (err) {
+                        console.error(`[Button] Erro ao enviar: ${err.message}`);
+                    }
                 }
             }
 
@@ -1056,7 +1213,12 @@
                 wrapper._isActive = false;
                 if (window.ecuCommunication && window.ecuCommunication.sendCommand) {
                     const cmdWithValue = buttonConfig.command + '=' + buttonConfig.valueRelease;
-                    window.ecuCommunication.sendCommand(cmdWithValue);
+                    console.log(`[Button] Enviando comando (stateful_value release): ${cmdWithValue}`);
+                    try {
+                        await window.ecuCommunication.sendCommand(buttonConfig.command, buttonConfig.valueRelease);
+                    } catch (err) {
+                        console.error(`[Button] Erro ao enviar: ${err.message}`);
+                    }
                 }
                 updateStatefulButton();
             }
@@ -1140,6 +1302,7 @@
         if (e.type === 'text') return createTextElement(e);
         if (e.type === 'digital') return createDigitalElement(e);
         if (e.type === 'bar-marker') return createBarMarkerElement(e);
+        if (e.type === 'bar-pointer') return createBarPointerElement(e);
         if (e.type === 'conditional-text') return createConditionalTextElement(e);
         if (e.type === 'button') return createButtonElement(e);
         return createGaugeElement(e);
@@ -1241,17 +1404,50 @@
                 const markerPercent = Math.max(0, Math.min(100, ((e.markerValue - e.min) / (e.max - e.min)) * 100));
                 el._fillEl._markerIndicator.style.left = markerPercent + '%';
             }
+        } else if (el._type === 'bar-pointer' && el._fillEl) {
+            const pct = ((newValue - e.min) / (e.max - e.min)) * 100;
+            const clampedPct = Math.max(0, Math.min(100, pct));
+            el._fillEl.style.width = clampedPct + '%';
+            if (el._valueEl) el._valueEl.textContent = newValue.toFixed(1) + ' / ' + e.max.toFixed(1) + (e.unit ? ` ${e.unit}` : '');
+            
+            // Atualizar posição do ponteiro vertical (se existir)
+            if (el._pointerEl && el._pointerEl._pointerIndicator) {
+                el._pointerEl._pointerIndicator.style.left = clampedPct + '%';
+            }
         } else if (el._type === 'led' && el._ledEl) {
             const isActive = newValue >= e.threshold;
             const ledColor = isActive ? (e.color || '#00FF00') : (e.colorOff || '#333');
             el._ledEl.style.background = `radial-gradient(circle at 30% 30%, ${isActive ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.05)'}, ${ledColor})`;
             el._ledEl.style.border = isActive ? `2px solid ${e.color || '#00FF00'}` : '2px solid #555';
             el._ledEl.style.boxShadow = isActive ? `0 0 15px ${e.color || '#00FF00'}, inset 0 0 10px rgba(255,255,255,0.1)` : 'inset 0 2px 4px rgba(0,0,0,0.4)';
+            
+            // Aplicar/remover animação de blink
+            if (e.blink && isActive) {
+                el._ledEl.classList.add('led-blinking');
+            } else {
+                el._ledEl.classList.remove('led-blinking');
+            }
+            
             // Atualizar ícone se existir
             const iconEl = el._ledEl.querySelector('i');
             if (iconEl && e.icon) {
                 iconEl.style.color = isActive ? 'white' : '#999';
                 iconEl.style.textShadow = isActive ? `0 0 6px ${e.color || '#00FF00'}` : 'none';
+            }
+        } else if (el._type === 'conditional-text' && el._textEl) {
+            // Atualizar conditional-text quando valor muda
+            if (e.conditions && Array.isArray(e.conditions)) {
+                let activeCondition = e.conditions[0];
+                for (let cond of e.conditions) {
+                    if (eval(`${newValue} ${cond.operator} ${cond.threshold}`)) {
+                        activeCondition = cond;
+                        break;
+                    }
+                }
+                el._textEl.textContent = activeCondition ? activeCondition.text : (e.label || '');
+                el._textEl.style.color = activeCondition ? (activeCondition.textColor || '#ffffff') : (e.defaultTextColor || '#ffffff');
+                el._textEl.style.background = activeCondition ? (activeCondition.backgroundColor || 'rgba(255,0,0,0.3)') : (e.defaultBackgroundColor || 'rgba(0,0,0,0.2)');
+                el._textEl.style.borderColor = activeCondition ? (activeCondition.borderColor || 'rgba(255,0,0,0.5)') : (e.defaultBorderColor || 'rgba(0,0,0,0.3)');
             }
         } else if (el._type === 'digital' && el._digitEl) {
             // animate numeric change
@@ -1393,7 +1589,7 @@
             let baseW = 10; // percent of design width
             let baseH = 10; // percent of design height
             if (elementWithData.type === 'gauge') { baseW = 12; baseH = 12; }
-            else if (elementWithData.type === 'bar' || elementWithData.type === 'bar-marker') { baseW = 28; baseH = 10; }
+            else if (elementWithData.type === 'bar' || elementWithData.type === 'bar-marker' || elementWithData.type === 'bar-pointer') { baseW = 28; baseH = 10; }
             else if (elementWithData.type === 'led') { baseW = 6; baseH = 8; }
             else if (elementWithData.type === 'text' || elementWithData.type === 'conditional-text') { baseW = 12; baseH = 6; }
 
@@ -1851,7 +2047,7 @@
             // compute base size
             let baseW = 10, baseH = 10;
             if (e.type === 'gauge') { baseW = 12; baseH = 12; }
-            else if (e.type === 'bar' || e.type === 'bar-marker') { baseW = 28; baseH = 10; }
+            else if (e.type === 'bar' || e.type === 'bar-marker' || e.type === 'bar-pointer') { baseW = 28; baseH = 10; }
             else if (e.type === 'led') { baseW = 6; baseH = 8; }
             else if (e.type === 'text' || e.type === 'conditional-text') { baseW = 12; baseH = 6; }
             const sizeScale = (e.sizeScale || 100) / 100;
@@ -2019,10 +2215,45 @@
             const visualBtn = makeTabBtn('visual', 'Visual', true);
             const labelsBtn = makeTabBtn('labels', 'Rótulos');
             const valuesBtn = makeTabBtn('values', 'Valores');
+            
+            // Determinar nome da aba específica baseado no tipo
+            const typeName = {
+                'gauge': 'Gauge',
+                'bar': 'Barra',
+                'bar-marker': 'Marcador',
+                'led': 'LED',
+                'text': 'Texto',
+                'conditional-text': 'Texto Condicional',
+                'button': 'Botão',
+                'digital': 'Digital'
+            }[e.type] || 'Configurações';
+            
+            const configBtn = makeTabBtn('config', typeName);
 
+            // Determinar quais abas devem estar disponíveis
+            let hasConfigTab = true;
+            if (e.type === 'button') {
+                valuesBtn.style.opacity = '0.5';
+                valuesBtn.style.cursor = 'not-allowed';
+                valuesBtn.style.pointerEvents = 'none';
+                valuesBtn.title = 'Botões não têm valor';
+            }
+            
+            // Se não houver campos específicos de configuração, bloquear a aba
+            let typeHasConfig = ['gauge', 'bar', 'bar-marker', 'led', 'text', 'conditional-text', 'button', 'digital'].includes(e.type);
+            if (!typeHasConfig) hasConfigTab = false;
+            
+            if (!hasConfigTab) {
+                configBtn.style.opacity = '0.5';
+                configBtn.style.cursor = 'not-allowed';
+                configBtn.style.pointerEvents = 'none';
+                configBtn.title = 'Sem configurações específicas';
+            }
+            
             tabsHeader.appendChild(visualBtn);
             tabsHeader.appendChild(labelsBtn);
             tabsHeader.appendChild(valuesBtn);
+            tabsHeader.appendChild(configBtn);
             leftBody.appendChild(tabsHeader);
 
             const tabArea = document.createElement('div');
@@ -2034,12 +2265,14 @@
             const panes = {
                 visual: document.createElement('div'),
                 labels: document.createElement('div'),
-                values: document.createElement('div')
+                values: document.createElement('div'),
+                config: document.createElement('div')
             };
             Object.values(panes).forEach(p => { p.style.display = 'none'; p.style.padding = '6px 0'; tabArea.appendChild(p); });
             panes.visual.style.display = 'block';
 
             function switchTo(tabId) {
+                if (!hasConfigTab && tabId === 'config') return; // não permitir ir pra config se não tiver
                 Object.keys(panes).forEach(k => panes[k].style.display = (k === tabId ? 'block' : 'none'));
                 Object.keys(tabButtons).forEach(k => {
                     const b = tabButtons[k];
@@ -2051,6 +2284,7 @@
             visualBtn.addEventListener('click', () => switchTo('visual'));
             labelsBtn.addEventListener('click', () => switchTo('labels'));
             valuesBtn.addEventListener('click', () => switchTo('values'));
+            configBtn.addEventListener('click', () => switchTo('config'));
 
             const removeBtn = document.createElement('button');
             removeBtn.textContent = '✕ Remover';
@@ -2130,7 +2364,7 @@
 
             const commonFields = [
                 { label: 'ID', key: 'id', type: 'text' },
-                { label: 'Tipo', key: 'type', type: 'select', options: ['gauge', 'bar', 'bar-marker', 'led', 'text', 'conditional-text', 'button', 'digital'] },
+                { label: 'Tipo', key: 'type', type: 'select', options: ['gauge', 'bar', 'bar-marker', 'bar-pointer', 'led', 'text', 'conditional-text', 'button', 'digital'] },
                 { label: 'Cor', key: 'color', type: 'color' },
                 { label: 'Tamanho (%)', key: 'sizeScale', type: 'range', min: '25', max: '444', step: '5' },
                 { label: 'Ícone (Bootstrap)', key: 'icon', type: 'text', placeholder: 'Ex: speedometer, power, fuel-pump' },
@@ -2153,7 +2387,6 @@
             const gaugeBarFields = [
                 { label: 'Mín', key: 'min', type: 'number' },
                 { label: 'Máx', key: 'max', type: 'number' },
-                { label: 'Valor', key: 'value', type: 'number' },
                 { label: 'Divisor de Valor', key: 'valueDivisor', type: 'number', step: '1' },
                 { label: 'Rótulo (Label)', key: 'label', type: 'text', placeholder: 'Ex: Temperatura, RPM' },
                 { label: 'Unidade', key: 'unit', type: 'text', placeholder: 'Ex: °C, km/h, bar' },
@@ -2175,7 +2408,6 @@
             const digitalFields = [
                 { label: 'Mín', key: 'min', type: 'number' },
                 { label: 'Máx', key: 'max', type: 'number' },
-                { label: 'Valor', key: 'value', type: 'number' },
                 { label: 'Unidade', key: 'unit', type: 'text' },
                 { label: 'Cor do Texto', key: 'color', type: 'color' }
             ];
@@ -2183,15 +2415,21 @@
             const barMarkerFields = [
                 { label: 'Mín', key: 'min', type: 'number' },
                 { label: 'Máx', key: 'max', type: 'number' },
-                { label: 'Valor', key: 'value', type: 'number' },
                 { label: 'Valor Marcador', key: 'markerValue', type: 'number' },
                 { label: 'Rótulo (Label)', key: 'label', type: 'text', placeholder: 'Ex: Pressão, Carga' },
                 { label: 'Unidade', key: 'unit', type: 'text', placeholder: 'Ex: bar, %, psi' },
                 { label: 'Cor Marcador', key: 'markerColor', type: 'color' }
             ];
 
+            const barPointerFields = [
+                { label: 'Mín', key: 'min', type: 'number' },
+                { label: 'Máx', key: 'max', type: 'number' },
+                { label: 'Rótulo (Label)', key: 'label', type: 'text', placeholder: 'Ex: Velocidade, Pressão' },
+                { label: 'Unidade', key: 'unit', type: 'text', placeholder: 'Ex: km/h, bar, psi' }
+            ];
+
             const ledFields = [
-                { label: 'Valor', key: 'value', type: 'number' },
+                { label: 'Rótulo (Label)', key: 'label', type: 'text', placeholder: 'Ex: Sensor, Alerta' },
                 { label: 'Limiar', key: 'threshold', type: 'number' },
                 { label: 'Cor Off', key: 'colorOff', type: 'color' },
                 { label: 'Piscar', key: 'blink', type: 'checkbox' },
@@ -2205,9 +2443,11 @@
             ];
 
             const conditionalTextFields = [
-                { label: 'Valor', key: 'value', type: 'number' },
                 { label: 'Tamanho Fonte (px)', key: 'fontSize', type: 'number' },
-                { label: 'Peso (400, 600, 700)', key: 'fontWeight', type: 'number' }
+                { label: 'Peso (400, 600, 700)', key: 'fontWeight', type: 'number' },
+                { label: 'Cor do Texto Padrão', key: 'defaultTextColor', type: 'color' },
+                { label: 'Cor de Fundo Padrão', key: 'defaultBackgroundColor', type: 'color' },
+                { label: 'Cor da Orla Padrão', key: 'defaultBorderColor', type: 'color' }
             ];
 
             const buttonFields = [
@@ -2216,7 +2456,8 @@
                 { label: 'Ícone Customizado (OFF)', key: 'customIcon', type: 'text', placeholder: 'Ex: heart, star, etc (deixe vazio para padrão)' },
                 { label: 'Cor Customizada (OFF)', key: 'customColor', type: 'select', options: ['red', 'green', 'blue', 'yellow', 'purple', 'orange'] },
                 { label: 'Ícone Customizado (ON)', key: 'customIconOn', type: 'text', placeholder: 'Para estado ativo (stateful only)' },
-                { label: 'Cor Customizada (ON)', key: 'customColorOn', type: 'select', options: ['red', 'green', 'blue', 'yellow', 'purple', 'orange'] }
+                { label: 'Cor Customizada (ON)', key: 'customColorOn', type: 'select', options: ['red', 'green', 'blue', 'yellow', 'purple', 'orange'] },
+                { label: 'Sincronizar com ECU', key: 'syncWithECU', type: 'checkbox', help: 'Carregar estado atual da ECU ao abrir dashboard' }
             ];
 
             let fieldsToShow = commonFields;
@@ -2228,6 +2469,8 @@
                 fieldsToShow = [...fieldsToShow, ...barFields];
             } else if (e.type === 'bar-marker') {
                 fieldsToShow = [...fieldsToShow, ...barMarkerFields];
+            } else if (e.type === 'bar-pointer') {
+                fieldsToShow = [...fieldsToShow, ...barPointerFields];
             } else if (e.type === 'digital') {
                 fieldsToShow = [...fieldsToShow, ...digitalFields];
             } else if (e.type === 'led') {
@@ -2282,6 +2525,24 @@
                 fixedRow.appendChild(rFixed); fixedRow.appendChild(lblFixed);
                 dsContainer.appendChild(fixedRow);
 
+                // Input para valor fixo (abaixo do radio button)
+                const fixedValueContainer = document.createElement('div');
+                fixedValueContainer.style.marginLeft = '24px';
+                fixedValueContainer.style.marginTop = '6px';
+                fixedValueContainer.style.marginBottom = '12px';
+                const fixedValueInput = document.createElement('input');
+                fixedValueInput.type = 'number';
+                fixedValueInput.style.width = '100%';
+                fixedValueInput.style.padding = '6px';
+                fixedValueInput.style.borderRadius = '4px';
+                fixedValueInput.style.background = 'var(--bg-dark)';
+                fixedValueInput.style.color = 'var(--text-light)';
+                fixedValueInput.style.border = '1px solid var(--border-color)';
+                fixedValueInput.placeholder = 'Digite o valor fixo aqui';
+                fixedValueInput.value = e.value !== undefined ? e.value : '';
+                fixedValueContainer.appendChild(fixedValueInput);
+                dsContainer.appendChild(fixedValueContainer);
+
                 // commoninfo field
                 const fieldRow = document.createElement('div');
                 fieldRow.style.display = 'flex';
@@ -2325,6 +2586,16 @@
 
                 // choose initial
                 if (e.fieldId) rField.checked = true; else if (e.sourceElementId) rElement.checked = true; else rFixed.checked = true;
+
+                // Event listener para o input de valor fixo
+                fixedValueInput.addEventListener('change', () => {
+                    elements[idx].value = fixedValueInput.value ? parseFloat(fixedValueInput.value) : undefined;
+                    try { updatePreviewForElement(idx); } catch (err) {}
+                });
+                fixedValueInput.addEventListener('input', () => {
+                    elements[idx].value = fixedValueInput.value ? parseFloat(fixedValueInput.value) : undefined;
+                    try { updatePreviewForElement(idx); } catch (err) {}
+                });
 
                 // event handlers: switching modes
                 // central helper to keep data-source state consistent across all controls
@@ -2379,12 +2650,14 @@
             fieldsToShow.forEach(f => {
                 // Decide to which tab pane this field belongs
                 const visualKeys = new Set(['color','sizeScale','icon','iconRotation','gaugeRotation','fontSize','fontWeight']);
-                const valueKeys = new Set(['min','max','value','valueDivisor','mode','coldColor','hotColor','markerValue','markerColor','threshold','blink','blinkRate','fieldId','sourceElementId']);
-                const labelKeys = new Set(['id','label','unit','type','dangerStart','dangerEnd','dangerColor','warningStart','warningEnd','warningColor']);
+                const valueKeys = new Set(['min','max','valueDivisor','mode','coldColor','hotColor','markerValue','markerColor','threshold','fieldId','sourceElementId']);
+                const labelKeys = new Set(['id','label','unit','type']);
+                const configKeys = new Set(['dangerStart','dangerEnd','dangerColor','warningStart','warningEnd','warningColor','text','customLabel','customIcon','customColor','customIconOn','customColorOn','buttonConfigId','blink','blinkRate','syncWithECU']);
 
                 let targetPane = panes.labels; // default
                 if (visualKeys.has(f.key)) targetPane = panes.visual;
                 else if (valueKeys.has(f.key)) targetPane = panes.values;
+                else if (configKeys.has(f.key)) targetPane = panes.config;
                 else if (labelKeys.has(f.key)) targetPane = panes.labels;
                 const row = document.createElement('div');
                 row.style.display = 'flex';
@@ -2821,38 +3094,112 @@
                     conds.forEach((c, ci) => {
                         const row = document.createElement('div');
                         row.style.display = 'grid';
-                        row.style.gridTemplateColumns = 'auto auto 1fr auto auto';
-                        row.style.gap = '8px';
+                        row.style.gridTemplateColumns = 'auto auto 1fr auto auto auto auto auto';
+                        row.style.gap = '6px';
+                        row.style.alignItems = 'center';
+                        row.style.padding = '8px';
+                        row.style.background = 'rgba(0,0,0,0.1)';
+                        row.style.borderRadius = '4px';
+                        row.style.marginBottom = '6px';
 
                         const opSelect = document.createElement('select');
+                        opSelect.style.padding = '4px 6px';
+                        opSelect.style.background = 'var(--bg-dark)';
+                        opSelect.style.color = 'var(--text-light)';
+                        opSelect.style.border = '1px solid var(--border-color)';
+                        opSelect.style.borderRadius = '4px';
                         ['>=','>','<=','<','==','!='].forEach(o => { const oEl = document.createElement('option'); oEl.value = o; oEl.textContent = o; if (c.operator === o) oEl.selected = true; opSelect.appendChild(oEl); });
-                        const thr = document.createElement('input'); thr.type = 'number'; thr.value = c.threshold || 0; thr.style.padding = '6px'; thr.style.background='var(--bg-dark)'; thr.style.color='var(--text-light)';
-                        const txt = document.createElement('input'); txt.type = 'text'; txt.value = c.text || ''; txt.style.padding = '6px'; txt.style.background='var(--bg-dark)'; txt.style.color='var(--text-light)';
-                        const color = document.createElement('input'); color.type = 'color'; color.value = c.color || '#ffffff';
-                        const rem = document.createElement('button'); rem.textContent = '✕'; rem.title = 'Remover condição'; rem.style.background='transparent'; rem.style.border='1px solid var(--border-color)'; rem.style.borderRadius='4px'; rem.style.color='var(--text-light)';
+                        
+                        const thr = document.createElement('input');
+                        thr.type = 'number';
+                        thr.value = c.threshold || 0;
+                        thr.style.padding = '4px 6px';
+                        thr.style.width = '70px';
+                        thr.style.background = 'var(--bg-dark)';
+                        thr.style.color = 'var(--text-light)';
+                        thr.style.border = '1px solid var(--border-color)';
+                        thr.style.borderRadius = '4px';
+                        
+                        const txt = document.createElement('input');
+                        txt.type = 'text';
+                        txt.value = c.text || '';
+                        txt.placeholder = 'Texto a exibir';
+                        txt.style.padding = '4px 6px';
+                        txt.style.background = 'var(--bg-dark)';
+                        txt.style.color = 'var(--text-light)';
+                        txt.style.border = '1px solid var(--border-color)';
+                        txt.style.borderRadius = '4px';
+                        
+                        const textColor = document.createElement('input');
+                        textColor.type = 'color';
+                        textColor.value = c.textColor || '#ffffff';
+                        textColor.title = 'Cor do texto';
+                        textColor.style.width = '40px';
+                        textColor.style.height = '32px';
+                        textColor.style.cursor = 'pointer';
+                        textColor.style.border = '1px solid var(--border-color)';
+                        
+                        const bgColor = document.createElement('input');
+                        bgColor.type = 'color';
+                        bgColor.value = c.backgroundColor || '#ff0000';
+                        bgColor.title = 'Cor de fundo';
+                        bgColor.style.width = '40px';
+                        bgColor.style.height = '32px';
+                        bgColor.style.cursor = 'pointer';
+                        bgColor.style.border = '1px solid var(--border-color)';
+                        
+                        const borderColorInput = document.createElement('input');
+                        borderColorInput.type = 'color';
+                        borderColorInput.value = c.borderColor || '#ff6666';
+                        borderColorInput.title = 'Cor da orla';
+                        borderColorInput.style.width = '40px';
+                        borderColorInput.style.height = '32px';
+                        borderColorInput.style.cursor = 'pointer';
+                        borderColorInput.style.border = '1px solid var(--border-color)';
+                        
+                        const rem = document.createElement('button');
+                        rem.textContent = '✕';
+                        rem.title = 'Remover condição';
+                        rem.style.background = 'transparent';
+                        rem.style.border = '1px solid var(--border-color)';
+                        rem.style.borderRadius = '4px';
+                        rem.style.color = 'var(--text-light)';
+                        rem.style.padding = '4px 8px';
+                        rem.style.cursor = 'pointer';
 
                         opSelect.addEventListener('change', () => { elements[idx].conditions[ci].operator = opSelect.value; try { updatePreviewForElement(idx); } catch (err) {} });
                         thr.addEventListener('input', () => { elements[idx].conditions[ci].threshold = parseFloat(thr.value) || 0; try { updatePreviewForElement(idx); } catch (err) {} });
                         txt.addEventListener('input', () => { elements[idx].conditions[ci].text = txt.value; try { updatePreviewForElement(idx); } catch (err) {} });
-                        color.addEventListener('change', () => { elements[idx].conditions[ci].color = color.value; try { updatePreviewForElement(idx); } catch (err) {} });
+                        textColor.addEventListener('change', () => { elements[idx].conditions[ci].textColor = textColor.value; try { updatePreviewForElement(idx); } catch (err) {} });
+                        bgColor.addEventListener('change', () => { elements[idx].conditions[ci].backgroundColor = bgColor.value; try { updatePreviewForElement(idx); } catch (err) {} });
+                        borderColorInput.addEventListener('change', () => { elements[idx].conditions[ci].borderColor = borderColorInput.value; try { updatePreviewForElement(idx); } catch (err) {} });
                         rem.addEventListener('click', () => { elements[idx].conditions.splice(ci,1); renderConditions(); try { updatePreviewForElement(idx); } catch (err) {} });
 
-                        row.appendChild(opSelect); row.appendChild(thr); row.appendChild(txt); row.appendChild(color); row.appendChild(rem);
+                        row.appendChild(opSelect);
+                        row.appendChild(thr);
+                        row.appendChild(txt);
+                        row.appendChild(textColor);
+                        row.appendChild(bgColor);
+                        row.appendChild(borderColorInput);
+                        row.appendChild(rem);
                         list.appendChild(row);
                     });
                 }
 
                 const addBtnCond = document.createElement('button');
-                addBtnCond.textContent = '+ Adicionar condição';
-                addBtnCond.style.marginTop = '8px';
-                addBtnCond.style.padding = '8px';
+                addBtnCond.textContent = '+ Adicionar Condição';
+                addBtnCond.style.marginTop = '12px';
+                addBtnCond.style.padding = '10px 16px';
                 addBtnCond.style.border = 'none';
                 addBtnCond.style.background = 'var(--primary-red)';
                 addBtnCond.style.color = 'white';
                 addBtnCond.style.borderRadius = '6px';
+                addBtnCond.style.fontWeight = '600';
+                addBtnCond.style.cursor = 'pointer';
+                addBtnCond.style.width = '100%';
                 addBtnCond.addEventListener('click', () => {
                     elements[idx].conditions = elements[idx].conditions || [];
-                    elements[idx].conditions.push({ operator: '>=', threshold: 0, text: 'Novo', color: '#ffffff' });
+                    elements[idx].conditions.push({ operator: '>=', threshold: 0, text: 'Novo', textColor: '#ffffff', backgroundColor: '#ff0000', borderColor: '#ff6666' });
                     renderConditions();
                     try { updatePreviewForElement(idx); } catch (err) {}
                 });
@@ -2887,7 +3234,7 @@
             typeSelect.style.background = 'var(--bg-dark)';
             typeSelect.style.color = 'var(--text-light)';
             
-            ['gauge', 'bar', 'bar-marker', 'led', 'text', 'conditional-text', 'button', 'digital'].forEach(t => {
+            ['gauge', 'bar', 'bar-marker', 'bar-pointer', 'led', 'text', 'conditional-text', 'button', 'digital'].forEach(t => {
                 const opt = document.createElement('option');
                 opt.value = t;
                 opt.textContent = t;
@@ -2929,6 +3276,8 @@
                     newElem = { ...baseConfig, value: 0, min: 0, max: 100, sizeScale: 100, color: '#8B0000' };
                 } else if (type === 'bar-marker') {
                     newElem = { ...baseConfig, value: 50, min: 0, max: 100, sizeScale: 100, color: '#8B0000', markerValue: 75, markerColor: '#FFD700' };
+                } else if (type === 'bar-pointer') {
+                    newElem = { ...baseConfig, value: 50, min: 0, max: 100, sizeScale: 100, color: '#8B0000' };
                 } else if (type === 'led') {
                     newElem = { ...baseConfig, value: 0, threshold: 500, color: '#00FF00', colorOff: '#333333', blink: false, blinkRate: 500, sizeScale: 100 };
                 } else if (type === 'text') {
@@ -2936,7 +3285,7 @@
                 } else if (type === 'digital') {
                     newElem = { ...baseConfig, value: 0, min: 0, max: 9999, unit: '', sizeScale: 100, color: '#00ff88' };
                 } else if (type === 'conditional-text') {
-                    newElem = { ...baseConfig, value: 0, fontSize: 16, fontWeight: '600', conditions: [] };
+                    newElem = { ...baseConfig, value: 0, fontSize: 16, fontWeight: '600', defaultTextColor: '#ffffff', defaultBackgroundColor: 'rgba(0,0,0,0.2)', defaultBorderColor: 'rgba(0,0,0,0.3)', conditions: [] };
                 } else if (type === 'button') {
                     // Para botões, usar o primeiro botão configurado como padrão
                     const defaultBtn = dashboardButtonsConfig.length > 0 ? dashboardButtonsConfig[0] : null;
@@ -3272,9 +3621,23 @@
             closeModal();
         });
 
+        const externalDashBtn = document.createElement('button');
+        externalDashBtn.textContent = 'Dashboard Externa';
+        externalDashBtn.style.padding = '8px 14px';
+        externalDashBtn.style.background = 'linear-gradient(90deg, #8B0000, #ff6666)';
+        externalDashBtn.style.border = 'none';
+        externalDashBtn.style.color = 'white';
+        externalDashBtn.style.borderRadius = '4px';
+        externalDashBtn.style.cursor = 'pointer';
+        externalDashBtn.style.fontWeight = '600';
+        externalDashBtn.addEventListener('click', () => {
+            openQuickStatsModal();
+        });
+
         footer.appendChild(revertBtn);
         footer.appendChild(genBtn);
         footer.appendChild(loadBtn);
+        footer.appendChild(externalDashBtn);
         footer.appendChild(saveBtn);
         frame.appendChild(footer);
 
@@ -3560,6 +3923,406 @@
         generateShareCode,
         importShareCode
     };
+
+    // ===== QUICK STATS MODAL =====
+    function openQuickStatsModal() {
+        // Criar modal overlay
+        const overlay = document.createElement('div');
+        overlay.style.position = 'fixed';
+        overlay.style.top = '0';
+        overlay.style.left = '0';
+        overlay.style.right = '0';
+        overlay.style.bottom = '0';
+        overlay.style.background = 'rgba(0,0,0,0.7)';
+        overlay.style.display = 'flex';
+        overlay.style.justifyContent = 'center';
+        overlay.style.alignItems = 'center';
+        overlay.style.zIndex = '20000';
+        
+        // Criar modal content com layout flexível
+        const modalBox = document.createElement('div');
+        modalBox.style.background = 'var(--bg-dark)';
+        modalBox.style.borderRadius = '12px';
+        modalBox.style.maxWidth = '500px';
+        modalBox.style.width = '90%';
+        modalBox.style.maxHeight = '80vh';
+        modalBox.style.border = '2px solid var(--primary-red)';
+        modalBox.style.boxShadow = '0 8px 32px rgba(0,0,0,0.5)';
+        modalBox.style.display = 'flex';
+        modalBox.style.flexDirection = 'column';
+        
+        // Criar container para conteúdo scrollável
+        const contentContainer = document.createElement('div');
+        contentContainer.style.flex = '1';
+        contentContainer.style.overflowY = 'auto';
+        contentContainer.style.padding = '20px';
+        
+        // Título
+        const title = document.createElement('h3');
+        title.textContent = 'Configurar Dashboard Externa (Quick Stats)';
+        title.style.color = 'white';
+        title.style.marginBottom = '20px';
+        title.style.marginTop = '0';
+        title.style.textAlign = 'center';
+        contentContainer.appendChild(title);
+        
+        // Descrição
+        const desc = document.createElement('p');
+        desc.textContent = 'Configure até 4 valores rápidos da sua ECU para exibir na barra superior';
+        desc.style.color = 'var(--text-light)';
+        desc.style.fontSize = '13px';
+        desc.style.marginBottom = '15px';
+        contentContainer.appendChild(desc);
+        
+        // Slots para cada stat
+        window.quickStatsConfig.forEach((stat, idx) => {
+            const slotDiv = document.createElement('div');
+            slotDiv.style.background = 'rgba(0,0,0,0.2)';
+            slotDiv.style.padding = '15px';
+            slotDiv.style.marginBottom = '12px';
+            slotDiv.style.borderRadius = '8px';
+            slotDiv.style.border = '1px solid var(--border-color)';
+            
+            // Heading
+            const slotTitle = document.createElement('div');
+            slotTitle.style.fontSize = '13px';
+            slotTitle.style.fontWeight = '700';
+            slotTitle.style.color = 'var(--primary-red)';
+            slotTitle.style.marginBottom = '10px';
+            slotTitle.textContent = `Valor ${idx + 1}`;
+            slotDiv.appendChild(slotTitle);
+            
+            // Checkbox habilitar
+            const enableDiv = document.createElement('div');
+            enableDiv.style.display = 'flex';
+            enableDiv.style.alignItems = 'center';
+            enableDiv.style.marginBottom = '10px';
+            enableDiv.style.gap = '8px';
+            
+            const enableCheck = document.createElement('input');
+            enableCheck.type = 'checkbox';
+            enableCheck.checked = stat.enabled;
+            enableCheck.style.cursor = 'pointer';
+            
+            const enableLabel = document.createElement('label');
+            enableLabel.textContent = 'Habilitado';
+            enableLabel.style.color = 'var(--text-light)';
+            enableLabel.style.cursor = 'pointer';
+            enableLabel.style.margin = '0';
+            
+            enableDiv.appendChild(enableCheck);
+            enableDiv.appendChild(enableLabel);
+            slotDiv.appendChild(enableDiv);
+            
+            // Label input
+            const labelDiv = document.createElement('div');
+            labelDiv.style.marginBottom = '10px';
+            
+            const labelLbl = document.createElement('label');
+            labelLbl.textContent = 'Nome:';
+            labelLbl.style.display = 'block';
+            labelLbl.style.color = 'var(--text-light)';
+            labelLbl.style.fontSize = '12px';
+            labelLbl.style.marginBottom = '4px';
+            
+            const labelInput = document.createElement('input');
+            labelInput.type = 'text';
+            labelInput.value = stat.label;
+            labelInput.placeholder = 'Ex: RPM, Temperatura';
+            labelInput.style.width = '100%';
+            labelInput.style.padding = '6px 8px';
+            labelInput.style.background = 'var(--bg-darker)';
+            labelInput.style.border = '1px solid var(--border-color)';
+            labelInput.style.borderRadius = '4px';
+            labelInput.style.color = 'var(--text-light)';
+            labelInput.style.boxSizing = 'border-box';
+            
+            labelDiv.appendChild(labelLbl);
+            labelDiv.appendChild(labelInput);
+            slotDiv.appendChild(labelDiv);
+            
+            // Field select
+            const fieldDiv = document.createElement('div');
+            fieldDiv.style.marginBottom = '10px';
+            
+            const fieldLbl = document.createElement('label');
+            fieldLbl.textContent = 'Campo CommonInfo:';
+            fieldLbl.style.display = 'block';
+            fieldLbl.style.color = 'var(--text-light)';
+            fieldLbl.style.fontSize = '12px';
+            fieldLbl.style.marginBottom = '4px';
+            
+            const fieldSelect = document.createElement('select');
+            fieldSelect.style.width = '100%';
+            fieldSelect.style.padding = '6px 8px';
+            fieldSelect.style.background = 'var(--bg-darker)';
+            fieldSelect.style.border = '1px solid var(--border-color)';
+            fieldSelect.style.borderRadius = '4px';
+            fieldSelect.style.color = 'var(--text-light)';
+            fieldSelect.style.boxSizing = 'border-box';
+            
+            // Opção vazia
+            const emptyOpt = document.createElement('option');
+            emptyOpt.value = '';
+            emptyOpt.textContent = '-- Selecione um campo --';
+            fieldSelect.appendChild(emptyOpt);
+            
+            // Adicionar campos do CommonInfo
+            if (window.CommonInfo && window.CommonInfo.config && window.CommonInfo.config.dataFields) {
+                window.CommonInfo.config.dataFields.forEach(field => {
+                    const opt = document.createElement('option');
+                    opt.value = field.id;
+                    opt.textContent = `${field.title} (${field.id})`;
+                    if (stat.fieldId === field.id) opt.selected = true;
+                    fieldSelect.appendChild(opt);
+                });
+            }
+            
+            fieldDiv.appendChild(fieldLbl);
+            fieldDiv.appendChild(fieldSelect);
+            slotDiv.appendChild(fieldDiv);
+            
+            // Divisor input
+            const divDiv = document.createElement('div');
+            divDiv.style.marginBottom = '10px';
+            
+            const divLbl = document.createElement('label');
+            divLbl.textContent = 'Divisor de Valor:';
+            divLbl.style.display = 'block';
+            divLbl.style.color = 'var(--text-light)';
+            divLbl.style.fontSize = '12px';
+            divLbl.style.marginBottom = '4px';
+            
+            const divInput = document.createElement('input');
+            divInput.type = 'number';
+            divInput.value = stat.divisor;
+            divInput.min = '0.1';
+            divInput.step = '0.1';
+            divInput.style.width = '100%';
+            divInput.style.padding = '6px 8px';
+            divInput.style.background = 'var(--bg-darker)';
+            divInput.style.border = '1px solid var(--border-color)';
+            divInput.style.borderRadius = '4px';
+            divInput.style.color = 'var(--text-light)';
+            divInput.style.boxSizing = 'border-box';
+            
+            divDiv.appendChild(divLbl);
+            divDiv.appendChild(divInput);
+            slotDiv.appendChild(divDiv);
+            
+            // Cor input
+            const colorDiv = document.createElement('div');
+            colorDiv.style.marginBottom = '0';
+            
+            const colorLbl = document.createElement('label');
+            colorLbl.textContent = 'Cor:';
+            colorLbl.style.display = 'block';
+            colorLbl.style.color = 'var(--text-light)';
+            colorLbl.style.fontSize = '12px';
+            colorLbl.style.marginBottom = '4px';
+            
+            const colorInput = document.createElement('input');
+            colorInput.type = 'color';
+            colorInput.value = stat.color;
+            colorInput.style.width = '100%';
+            colorInput.style.height = '40px';
+            colorInput.style.border = 'none';
+            colorInput.style.borderRadius = '4px';
+            colorInput.style.cursor = 'pointer';
+            
+            colorDiv.appendChild(colorLbl);
+            colorDiv.appendChild(colorInput);
+            slotDiv.appendChild(colorDiv);
+            
+            // Event listeners
+            enableCheck.addEventListener('change', () => {
+                stat.enabled = enableCheck.checked;
+            });
+            
+            labelInput.addEventListener('input', () => {
+                stat.label = labelInput.value;
+            });
+            
+            fieldSelect.addEventListener('change', () => {
+                stat.fieldId = fieldSelect.value;
+            });
+            
+            divInput.addEventListener('change', () => {
+                stat.divisor = parseFloat(divInput.value) || 1;
+            });
+            
+            colorInput.addEventListener('change', () => {
+                stat.color = colorInput.value;
+            });
+            
+            contentContainer.appendChild(slotDiv);
+        });
+        
+        modalBox.appendChild(contentContainer);
+        
+        // Botões de ação (FIXO na base do modal)
+        const btnDiv = document.createElement('div');
+        btnDiv.style.display = 'flex';
+        btnDiv.style.gap = '10px';
+        btnDiv.style.padding = '15px 20px';
+        btnDiv.style.borderTop = '1px solid var(--border-color)';
+        btnDiv.style.background = 'rgba(0,0,0,0.3)';
+        btnDiv.style.flexShrink = '0';
+        
+        const saveBtn = document.createElement('button');
+        saveBtn.textContent = 'Salvar';
+
+        saveBtn.style.flex = '1';
+        saveBtn.style.padding = '10px';
+        saveBtn.style.background = 'var(--primary-red)';
+        saveBtn.style.border = 'none';
+        saveBtn.style.color = 'white';
+        saveBtn.style.borderRadius = '6px';
+        saveBtn.style.fontWeight = '600';
+        saveBtn.style.cursor = 'pointer';
+        
+        const closeBtn = document.createElement('button');
+        closeBtn.textContent = 'Fechar';
+        closeBtn.style.flex = '1';
+        closeBtn.style.padding = '10px';
+        closeBtn.style.background = 'var(--border-color)';
+        closeBtn.style.border = 'none';
+        closeBtn.style.color = 'var(--text-light)';
+        closeBtn.style.borderRadius = '6px';
+        closeBtn.style.fontWeight = '600';
+        closeBtn.style.cursor = 'pointer';
+        
+        saveBtn.addEventListener('click', () => {
+            saveQuickStatsConfig();
+            updateQuickStats();
+            overlay.remove();
+        });
+        
+        closeBtn.addEventListener('click', () => {
+            overlay.remove();
+        });
+        
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                overlay.remove();
+            }
+        });
+        
+        btnDiv.appendChild(saveBtn);
+        btnDiv.appendChild(closeBtn);
+        modalBox.appendChild(btnDiv);
+        
+        overlay.appendChild(modalBox);
+        document.body.appendChild(overlay);
+    }
+
+    // ===== QUICK STATS =====
+    const QUICK_STATS_KEY = 'dsw_quick_stats_config_v1';
+
+    function initializeQuickStats() {
+        try {
+            // Usar StorageManager se disponível, senão fallback para localStorage
+            let saved = null;
+            if (window.StorageManager) {
+                const raw = localStorage.getItem(QUICK_STATS_KEY);
+                if (raw) {
+                    const payload = JSON.parse(raw);
+                    saved = payload.data;
+                }
+            } else {
+                saved = localStorage.getItem(QUICK_STATS_KEY);
+                if (saved) saved = JSON.parse(saved);
+            }
+            
+            if (saved) {
+                window.quickStatsConfig = saved;
+            } else {
+                window.quickStatsConfig = [
+                    { id: 'stat1', label: '', fieldId: '', divisor: 1, color: '#FFD700', enabled: false },
+                    { id: 'stat2', label: '', fieldId: '', divisor: 1, color: '#FFD700', enabled: false },
+                    { id: 'stat3', label: '', fieldId: '', divisor: 1, color: '#FFD700', enabled: false },
+                    { id: 'stat4', label: '', fieldId: '', divisor: 1, color: '#FFD700', enabled: false }
+                ];
+            }
+        } catch (err) {
+            console.error('Erro ao carregar quick stats:', err);
+            window.quickStatsConfig = [
+                { id: 'stat1', label: '', fieldId: '', divisor: 1, color: '#FFD700', enabled: false },
+                { id: 'stat2', label: '', fieldId: '', divisor: 1, color: '#FFD700', enabled: false },
+                { id: 'stat3', label: '', fieldId: '', divisor: 1, color: '#FFD700', enabled: false },
+                { id: 'stat4', label: '', fieldId: '', divisor: 1, color: '#FFD700', enabled: false }
+            ];
+        }
+        updateQuickStats();
+    }
+
+    function updateQuickStats() {
+        const panel = document.getElementById('quickStatsPanel');
+        if (!panel) return;
+        
+        panel.innerHTML = '';
+        
+        window.quickStatsConfig.forEach(stat => {
+            if (!stat.enabled || !stat.fieldId) return;
+            
+            let value = 0;
+            let unit = '';
+            
+            if (window.CommonInfo && window.CommonInfo.data && window.CommonInfo.data[stat.fieldId]) {
+                value = window.CommonInfo.data[stat.fieldId].value || 0;
+                unit = window.CommonInfo.data[stat.fieldId].unit || '';
+            }
+            
+            const divisor = stat.divisor || 1;
+            const displayValue = (value / divisor).toFixed(1);
+            
+            const item = document.createElement('div');
+            item.className = 'quick-stat-item';
+            item.style.borderColor = stat.color;
+            item.style.boxShadow = `0 0 8px ${stat.color}33, 0 2px 8px rgba(0,0,0,0.3)`;
+            
+            const labelDiv = document.createElement('div');
+            labelDiv.className = 'quick-stat-label';
+            labelDiv.textContent = stat.label || stat.fieldId;
+            
+            const valueDiv = document.createElement('div');
+            valueDiv.className = 'quick-stat-value';
+            valueDiv.textContent = displayValue;
+            valueDiv.style.color = stat.color;
+            
+            const unitDiv = document.createElement('div');
+            unitDiv.className = 'quick-stat-unit';
+            unitDiv.textContent = unit;
+            
+            item.appendChild(labelDiv);
+            item.appendChild(valueDiv);
+            item.appendChild(unitDiv);
+            panel.appendChild(item);
+        });
+    }
+
+    function saveQuickStatsConfig() {
+        try {
+            // Usar StorageManager se disponível
+            if (window.StorageManager) {
+                window.StorageManager.save(QUICK_STATS_KEY, window.quickStatsConfig);
+            } else {
+                localStorage.setItem(QUICK_STATS_KEY, JSON.stringify(window.quickStatsConfig));
+            }
+        } catch (err) {
+            console.error('Erro ao salvar quick stats:', err);
+        }
+    }
+
+    // Atualizar quick stats quando CommonInfo for atualizado
+    window.addEventListener('commoninfoUpdated', () => {
+        updateQuickStats();
+    });
+
+    // Inicializar ao carregar
+    setTimeout(() => {
+        initializeQuickStats();
+    }, 500);
 
     if (modal && modal.getAttribute('aria-hidden') === 'false') {
         renderViewMode();

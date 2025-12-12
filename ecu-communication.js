@@ -5,8 +5,15 @@ class ECUCommunication {
         this.appConfig = null;
         this.environment = 'browser';
         
+        // WebView polling
+        this.pollInterval = 2000;
+        this._pollHandle = null;
+        
         // Carregar configuração de app.json
         this.loadAppConfig();
+        
+        // garante parar polling se a página for fechada / recarregada
+        window.addEventListener('beforeunload', () => this.stopStatusPolling());
     }
 
     /**
@@ -19,6 +26,11 @@ class ECUCommunication {
                 this.appConfig = await response.json();
                 this.environment = this.appConfig.environment || 'browser';
                 console.log(`[ECUCommunication] Ambiente detectado de app.json:`, this.environment);
+                
+                // Se for webview, inicializar integração com Python
+                if (this.environment === 'webview') {
+                    this.initPyLink();
+                }
                 return true;
             } else {
                 console.warn('[ECUCommunication] app.json não encontrado, usando padrão');
@@ -46,6 +58,75 @@ class ECUCommunication {
         return this.environment === env;
     }
 
+    /**
+     * Inicializa integração com pyWebView
+     * Conecta JavaScript com backend Python
+     */
+    async initPyLink() {
+        if (!window.pywebview) {
+            console.log('[WebView] Aguardando pywebview estar pronto...');
+            window.addEventListener('pywebviewready', async () => {
+                try {
+                    const status = await window.pywebview.api.get_status();
+                    this.setStatus(status.online);
+                    console.log('[WebView] Conectado ao backend Python');
+                } catch (e) {
+                    console.error('[WebView] Erro ao conectar:', e);
+                    this.setStatus(false);
+                }
+                this.startStatusPolling();
+            });
+        } else {
+            try {
+                const status = await window.pywebview.api.get_status();
+                this.setStatus(status.online);
+                console.log('[WebView] Conectado ao backend Python');
+            } catch (e) {
+                console.error('[WebView] Erro ao conectar:', e);
+                this.setStatus(false);
+            }
+            this.startStatusPolling();
+        }
+    }
+
+    /**
+     * Inicia polling de status da ECU (WebView)
+     */
+    startStatusPolling() {
+        if (this.environment !== 'webview') return;
+        if (this._pollHandle) return;
+
+        this._pollHandle = setInterval(async () => {
+            if (!window.pywebview || !window.pywebview.api || !window.pywebview.api.get_status) {
+                if (this.isOnline) this.setStatus(false);
+                return;
+            }
+
+            try {
+                const status = await window.pywebview.api.get_status();
+                if (typeof status === 'object' && 'online' in status) {
+                    if (status.online !== this.isOnline) {
+                        this.setStatus(status.online);
+                    }
+                } else {
+                    if (this.isOnline) this.setStatus(false);
+                }
+            } catch (err) {
+                if (this.isOnline) this.setStatus(false);
+            }
+        }, this.pollInterval);
+    }
+
+    /**
+     * Para polling de status
+     */
+    stopStatusPolling() {
+        if (this._pollHandle) {
+            clearInterval(this._pollHandle);
+            this._pollHandle = null;
+        }
+    }
+
     setConfig(config) {
         this.config = config;
     }
@@ -71,6 +152,23 @@ class ECUCommunication {
     }
 
     async sendCommand(command, value) {
+        // Usar ConfigMacros se disponível para determinar protocolo
+        if (window.ConfigMacros) {
+            return await window.ConfigMacros.choose({
+                browser: async () => this._sendBrowser(command, value),
+                webview: async () => await this._sendWebView(command, value),
+                windows: async () => await this._sendWindows(command, value)
+            });
+        }
+
+        // Fallback padrão (browser simulado)
+        return this._sendBrowser(command, value);
+    }
+
+    /**
+     * Implementação: Browser (Simulado)
+     */
+    _sendBrowser(command, value) {
         if (!this.isOnline) {
             console.log(`[OFFLINE] Não é possível enviar: ${command}=${value}`);
             return false;
@@ -85,7 +183,71 @@ class ECUCommunication {
         });
     }
 
+    /**
+     * Implementação: WebView (pyWebView - Python Backend)
+     */
+    async _sendWebView(command, value) {
+        if (!this.isOnline || !window.pywebview) {
+            console.log(`[OFFLINE] Não é possível enviar: ${command}=${value}`);
+            return false;
+        }
+
+        try {
+            const result = await window.pywebview.api.send_command(command, value);
+            if (result.ok) {
+                console.log(`[ECU] Enviado: ${command}=${value}`);
+                console.log(`[ECU] Resposta: ${result.response}`);
+                return true;
+            } else {
+                console.warn(`[ERRO] ${result.error}`);
+                this.setStatus(false);
+                return false;
+            }
+        } catch (err) {
+            console.error(`[ECU] Falha no envio: ${err}`);
+            this.setStatus(false);
+            return false;
+        }
+    }
+
+    /**
+     * Implementação: Windows (COM Port / Windows API)
+     */
+    async _sendWindows(command, value) {
+        if (!this.isOnline) {
+            console.log(`[OFFLINE] Não é possível enviar: ${command}=${value}`);
+            return false;
+        }
+
+        try {
+            // Simular envio via Windows API/COM Port
+            console.log(`[Windows] Enviando via COM Port: ${command}=${value}`);
+            // window.windowsAPI.sendCommand(command, value);
+            return true;
+        } catch (err) {
+            console.error(`[Windows] Erro ao enviar:`, err);
+            return false;
+        }
+    }
+
     async queryCommand(command) {
+        // Usar ConfigMacros se disponível para determinar protocolo
+        if (window.ConfigMacros) {
+            return await window.ConfigMacros.choose({
+                browser: async () => this._queryBrowser(command),
+                webview: async () => await this._queryWebView(command),
+                windows: async () => await this._queryWindows(command)
+            });
+        }
+
+        // Fallback padrão (browser simulado)
+        return this._queryBrowser(command);
+    }
+
+    /**
+     * Implementação: Browser (Simulado)
+     */
+    _queryBrowser(command) {
         if (!this.isOnline) {
             const defaultValue = this.getDefaultValue(command);
             console.log(`[OFFLINE] Retornando valor padrão para ${command}: ${defaultValue}`);
@@ -100,6 +262,56 @@ class ECUCommunication {
                 resolve(simulatedValue);
             }, 50);
         });
+    }
+
+    /**
+     * Implementação: WebView (pyWebView - Python Backend)
+     */
+    async _queryWebView(command) {
+        if (!this.isOnline || !window.pywebview) {
+            const defaultValue = this.getDefaultValue(command);
+            console.log(`[OFFLINE] Retornando valor padrão para ${command}: ${defaultValue}`);
+            return defaultValue;
+        }
+
+        try {
+            const result = await window.pywebview.api.query_command(command);
+            if (result.ok) {
+                console.log(`[ECU] Consultado: ${command}?`);
+                console.log(`[ECU] Resposta: ${command}=${result.value}`);
+                return result.value;
+            } else {
+                console.warn(`[ERRO] ${result.error}`);
+                this.setStatus(false);
+                return this.getDefaultValue(command);
+            }
+        } catch (err) {
+            console.error(`[ECU] Falha na consulta: ${err}`);
+            this.setStatus(false);
+            return this.getDefaultValue(command);
+        }
+    }
+
+    /**
+     * Implementação: Windows (COM Port / Windows API)
+     */
+    async _queryWindows(command) {
+        if (!this.isOnline) {
+            const defaultValue = this.getDefaultValue(command);
+            console.log(`[OFFLINE] Retornando valor padrão para ${command}: ${defaultValue}`);
+            return defaultValue;
+        }
+
+        try {
+            // Simular query via Windows API/COM Port
+            console.log(`[Windows] Consultando via COM Port: ${command}?`);
+            // const response = await window.windowsAPI.queryCommand(command);
+            // return response;
+            return this.getDefaultValue(command);
+        } catch (err) {
+            console.error(`[Windows] Erro ao consultar:`, err);
+            return this.getDefaultValue(command);
+        }
     }
 
     async saveCurrentScreen(widgets, currentValues) {
