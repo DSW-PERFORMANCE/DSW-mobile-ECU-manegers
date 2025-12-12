@@ -73,9 +73,17 @@
 
     function loadElements() {
         try {
-            const raw = localStorage.getItem(STORAGE_KEY);
-            if (!raw) return JSON.parse(JSON.stringify(defaultElements));
-            return JSON.parse(raw);
+            // Usar StorageManager se disponível, senão fallback para localStorage
+            if (window.StorageManager) {
+                const raw = localStorage.getItem(STORAGE_KEY);
+                if (!raw) return JSON.parse(JSON.stringify(defaultElements));
+                const payload = JSON.parse(raw);
+                return payload.data || JSON.parse(JSON.stringify(defaultElements));
+            } else {
+                const raw = localStorage.getItem(STORAGE_KEY);
+                if (!raw) return JSON.parse(JSON.stringify(defaultElements));
+                return JSON.parse(raw);
+            }
         } catch (err) {
             console.error('Failed to load elements', err);
             return JSON.parse(JSON.stringify(defaultElements));
@@ -92,7 +100,12 @@
 
     function saveElements(list) {
         try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+            // Usar StorageManager se disponível
+            if (window.StorageManager) {
+                window.StorageManager.save(STORAGE_KEY, list);
+            } else {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+            }
         } catch (err) {
             console.error('Failed to save elements', err);
         }
@@ -107,11 +120,16 @@
     }
 
     // Share code helpers: encode current elements to single-line string and decode back
-    const SHARE_PREFIX = 'DSWCFG1:';
+    const SHARE_PREFIX = 'DSWCFG2:'; // v2 inclui quick stats
 
     function generateShareCode() {
         try {
-            const json = JSON.stringify(elements);
+            // Incluir tanto elements quanto quick stats no export
+            const exportData = {
+                elements: elements,
+                quickStats: window.quickStatsConfig || []
+            };
+            const json = JSON.stringify(exportData);
             const base = btoa(encodeURIComponent(json));
             return SHARE_PREFIX + base;
         } catch (err) {
@@ -125,7 +143,15 @@
             if (!code || typeof code !== 'string') throw new Error('Código inválido');
             // accept prefixed code or raw base64
             let payload = code.trim();
-            if (payload.startsWith(SHARE_PREFIX)) payload = payload.slice(SHARE_PREFIX.length);
+            
+            // Detectar versão do código
+            let isV2 = false;
+            if (payload.startsWith('DSWCFG2:')) {
+                isV2 = true;
+                payload = payload.slice('DSWCFG2:'.length);
+            } else if (payload.startsWith('DSWCFG1:')) {
+                payload = payload.slice('DSWCFG1:'.length);
+            }
 
             // Try decode
             let json = null;
@@ -142,8 +168,24 @@
             }
 
             const parsed = JSON.parse(json);
-            if (!Array.isArray(parsed)) throw new Error('Formato inválido');
-            elements = parsed;
+            
+            // Se for v2, importar tanto elements quanto quickStats
+            if (isV2 && parsed.elements) {
+                if (!Array.isArray(parsed.elements)) throw new Error('Formato inválido');
+                elements = parsed.elements;
+                
+                // Importar quick stats se existirem
+                if (parsed.quickStats && Array.isArray(parsed.quickStats)) {
+                    window.quickStatsConfig = parsed.quickStats;
+                    saveQuickStatsConfig();
+                    updateQuickStats();
+                }
+            } else {
+                // v1: apenas elements
+                if (!Array.isArray(parsed)) throw new Error('Formato inválido');
+                elements = parsed;
+            }
+            
             saveElements(elements);
             return { ok: true };
         } catch (err) {
@@ -4158,9 +4200,21 @@
 
     function initializeQuickStats() {
         try {
-            const saved = localStorage.getItem(QUICK_STATS_KEY);
+            // Usar StorageManager se disponível, senão fallback para localStorage
+            let saved = null;
+            if (window.StorageManager) {
+                const raw = localStorage.getItem(QUICK_STATS_KEY);
+                if (raw) {
+                    const payload = JSON.parse(raw);
+                    saved = payload.data;
+                }
+            } else {
+                saved = localStorage.getItem(QUICK_STATS_KEY);
+                if (saved) saved = JSON.parse(saved);
+            }
+            
             if (saved) {
-                window.quickStatsConfig = JSON.parse(saved);
+                window.quickStatsConfig = saved;
             } else {
                 window.quickStatsConfig = [
                     { id: 'stat1', label: '', fieldId: '', divisor: 1, color: '#FFD700', enabled: false },
@@ -4228,7 +4282,12 @@
 
     function saveQuickStatsConfig() {
         try {
-            localStorage.setItem(QUICK_STATS_KEY, JSON.stringify(window.quickStatsConfig));
+            // Usar StorageManager se disponível
+            if (window.StorageManager) {
+                window.StorageManager.save(QUICK_STATS_KEY, window.quickStatsConfig);
+            } else {
+                localStorage.setItem(QUICK_STATS_KEY, JSON.stringify(window.quickStatsConfig));
+            }
         } catch (err) {
             console.error('Erro ao salvar quick stats:', err);
         }
