@@ -510,8 +510,8 @@
         "default": 0
       },
       {
-        "id": "tps",
-        "title": "Posição do Acelerador",
+        "id": "injection_duty",
+        "title": "Duty Cycle da Injeção",
         "type": "number",
         "unit": "%",
         "format": "0.0",
@@ -521,26 +521,15 @@
         "default": 0
       },
       {
-        "id": "coolant_temp",
-        "title": "Temperatura do Coolant",
+        "id": "injection_time",
+        "title": "Tempo de Injeção",
         "type": "number",
-        "unit": "°C",
-        "format": "0",
+        "unit": "ms",
+        "format": "0.00",
         "position": 2,
-        "min": -40,
-        "max": 150,
-        "default": 25
-      },
-      {
-        "id": "air_temp",
-        "title": "Temperatura do Ar",
-        "type": "number",
-        "unit": "°C",
-        "format": "0",
-        "position": 3,
-        "min": -40,
-        "max": 100,
-        "default": 25
+        "min": 0,
+        "max": 50,
+        "default": 0
       },
       {
         "id": "map_pressure",
@@ -548,31 +537,86 @@
         "type": "number",
         "unit": "kPa",
         "format": "0.0",
-        "position": 4,
+        "position": 3,
         "min": 0,
         "max": 300,
-        "default": 101.3
+        "default": 100.0
       },
       {
-        "id": "battery_voltage",
-        "title": "Voltagem da Bateria",
+        "id": "coolant_temp",
+        "title": "Temperatura do Motor",
         "type": "number",
-        "unit": "V",
-        "format": "0.0",
-        "position": 5,
-        "min": 8,
-        "max": 18,
-        "default": 4.4
+        "unit": "°C",
+        "format": "0",
+        "position": 4,
+        "min": -40,
+        "max": 150,
+        "default": 20
       },
       {
-        "id": "injection_duty",
-        "title": "Duty Cycle Injeção",
+        "id": "lambda",
+        "title": "Lambda (O2)",
+        "type": "number",
+        "unit": "λ",
+        "format": "0.00",
+        "position": 5,
+        "min": 0.5,
+        "max": 1.5,
+        "default": 1.00
+      },
+      {
+        "id": "gamma_percent",
+        "title": "Correção Gama",
         "type": "number",
         "unit": "%",
         "format": "0.0",
         "position": 6,
         "min": 0,
+        "max": 200,
+        "default": 100
+      },
+      {
+        "id": "tps",
+        "title": "Posição do Acelerador",
+        "type": "number",
+        "unit": "%",
+        "format": "0.0",
+        "position": 7,
+        "min": 0,
         "max": 100,
+        "default": 0
+      },
+      {
+        "id": "oil_pressure",
+        "title": "Pressão do Óleo",
+        "type": "number",
+        "unit": "bar",
+        "format": "0.00",
+        "position": 8,
+        "min": 0,
+        "max": 10,
+        "default": 0
+      },
+      {
+        "id": "battery_voltage",
+        "title": "Tensão da Bateria",
+        "type": "number",
+        "unit": "V",
+        "format": "0.0",
+        "position": 9,
+        "min": 8,
+        "max": 18,
+        "default": 12.6
+      },
+      {
+        "id": "dwell",
+        "title": "Dwell da Bobina",
+        "type": "number",
+        "unit": "ms",
+        "format": "0.00",
+        "position": 10,
+        "min": 0,
+        "max": 10,
         "default": 0
       },
       {
@@ -581,32 +625,21 @@
         "type": "number",
         "unit": "°",
         "format": "0.0",
-        "position": 7,
+        "position": 11,
         "min": -30,
         "max": 60,
-        "default": 0
+        "default": 10
       },
       {
-        "id": "fuel_pressure",
-        "title": "Pressão do Combustível",
+        "id": "etc_input",
+        "title": "Entrada ETC",
         "type": "number",
-        "unit": "bar",
-        "format": "0.00",
-        "position": 8,
+        "unit": "%",
+        "format": "0.0",
+        "position": 12,
         "min": 0,
-        "max": 10,
-        "default": 3.0
-      },
-      {
-        "id": "lambda",
-        "title": "Lambda (O2)",
-        "type": "number",
-        "unit": "λ",
-        "format": "0.00",
-        "position": 9,
-        "min": 0.5,
-        "max": 1.5,
-        "default": 1.2
+        "max": 100,
+        "default": 0
       }
     ]
   },
