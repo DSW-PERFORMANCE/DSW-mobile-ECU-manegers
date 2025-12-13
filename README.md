@@ -4,6 +4,8 @@
 
 Sistema modular de gerenciamento e monitoramento de ECU (Engine Control Unit) em tempo real com dashboard configurável, visualização de dados em múltiplos formatos, suporte a múltiplas plataformas e persistência de configurações.
 
+<img width="1361" height="627" alt="image" src="https://github.com/user-attachments/assets/3ca8fc57-1ed4-409f-9f24-e740c9723d36" />
+
 ---
 
 ## 🏗️ Estrutura de Arquivos
